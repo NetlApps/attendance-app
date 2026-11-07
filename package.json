@@ -1,0 +1,24 @@
+{
+  "name": "attendance-app",
+  "private": true,
+  "version": "1.4.1",
+  "type": "module",
+  "description": "Учёт посещаемости учебной группы",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "update-server": "node scripts/update-server.mjs"
+  },
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.1.0"
+  }
+}

@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.vite/
+*.local
+.DS_Store
+npm-debug.log*
+
+# Локальные сборки и подпись — не публикуются.
+/Attendance*.apk
+/*.idsig
+android/build/
+android/assets/
+android/keystore/
+local/
+release/Attendance.apk
