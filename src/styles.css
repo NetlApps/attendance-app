@@ -335,7 +335,6 @@ a {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  animation: fadeIn 0.22s ease both;
 }
 
 .muted {
@@ -1139,7 +1138,7 @@ a {
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, var(--accent), var(--accent-5));
-  transition: width 0.25s ease;
+  transition: width 0.32s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* ---------- Статусы ---------- */
@@ -3132,7 +3131,10 @@ button.report-cell:active {
   font-size: 10.5px;
   font-weight: 700;
   line-height: 1.1;
-  transition: color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+  transition:
+    color 0.2s ease,
+    background 0.2s ease,
+    transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .bottom-nav.is-dragging .bottom-nav-item.is-active {
@@ -3168,10 +3170,14 @@ button.report-cell:active {
   pointer-events: none;
   will-change: transform, width, height;
   transition:
-    transform 70ms linear,
-    width 170ms cubic-bezier(0.22, 1, 0.36, 1),
-    height 170ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 160ms ease;
+    transform 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 200ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 200ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 180ms ease;
+}
+
+.nav-cursor:not(.is-visible) {
+  transition: opacity 300ms ease;
 }
 
 .nav-cursor.is-visible {
@@ -3180,10 +3186,10 @@ button.report-cell:active {
 
 .nav-cursor.is-snapping {
   transition:
-    transform 280ms cubic-bezier(0.22, 1, 0.36, 1),
-    width 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    height 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 260ms ease;
+    transform 340ms cubic-bezier(0.16, 1, 0.3, 1),
+    width 260ms cubic-bezier(0.16, 1, 0.3, 1),
+    height 260ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 300ms ease;
 }
 
 .nav-cursor-glow {
@@ -3421,7 +3427,7 @@ button.report-cell:active {
   justify-content: center;
   background: var(--modal-backdrop);
   backdrop-filter: blur(3px);
-  animation: fadeIn 0.18s ease both;
+  animation: fadeIn 0.22s ease both;
 }
 
 .modal-card {
@@ -3433,7 +3439,7 @@ button.report-cell:active {
   border-radius: 24px 24px 0 0;
   background: var(--surface);
   box-shadow: 0 -10px 40px var(--shadow);
-  animation: slideUp 0.24s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+  animation: slideUp 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
   outline: none;
 }
 
@@ -3514,7 +3520,7 @@ button.report-cell:active {
   box-shadow: 0 12px 30px rgba(15, 23, 42, 0.22);
   font-size: 12.5px;
   line-height: 1.4;
-  animation: toastIn 0.22s ease both;
+  animation: toastIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .toast svg {
@@ -3616,8 +3622,8 @@ button.report-cell:active {
 
 @keyframes slideUp {
   from {
-    transform: translateY(28px);
-    opacity: 0.6;
+    transform: translateY(24px);
+    opacity: 0.45;
   }
   to {
     transform: translateY(0);
@@ -3776,7 +3782,7 @@ button.report-cell:active {
 
 ::view-transition-new(root) {
   z-index: 1;
-  animation: vt-reveal 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: vt-reveal 560ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 @keyframes vt-reveal {

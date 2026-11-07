@@ -248,6 +248,19 @@ function BottomNav({
       moved: false,
       lastIndex: index,
     };
+    // Пока курсор скрыт, переносим его на нажатую вкладку без анимации:
+    // иначе при следующем свайпе он будет «лететь» из старой позиции.
+    const startPoint = pointToCursor(event.clientX, event.clientY);
+    if (startPoint) {
+      setCursor({
+        visible: false,
+        snapping: false,
+        x: startPoint.x,
+        y: startPoint.y,
+        width: startPoint.width,
+        height: startPoint.height,
+      });
+    }
     longPressRef.current = window.setTimeout(() => {
       const drag = dragRef.current;
       if (!drag || drag.pointerId !== event.pointerId) return;
@@ -333,7 +346,7 @@ function BottomNav({
       hideCursorRef.current = window.setTimeout(() => {
         setCursor((current) => ({ ...current, visible: false, snapping: false }));
         hideCursorRef.current = null;
-      }, 300);
+      }, 380);
       if (tab) onSelect(tab.route);
     } else {
       setCursor((current) => ({ ...current, visible: false, snapping: true }));
@@ -493,8 +506,14 @@ function AppContent() {
         hasPointer: true,
       };
     };
-    window.addEventListener('pointerdown', rememberOrigin, { passive: true });
-    return () => window.removeEventListener('pointerdown', rememberOrigin);
+    // pointerup важен для свайпа: круг должен раскрываться из точки,
+    // где палец отпустил вкладку, а не из точки первого касания.
+    window.addEventListener('pointerdown', rememberOrigin, { passive: true, capture: true });
+    window.addEventListener('pointerup', rememberOrigin, { passive: true, capture: true });
+    return () => {
+      window.removeEventListener('pointerdown', rememberOrigin, { capture: true });
+      window.removeEventListener('pointerup', rememberOrigin, { capture: true });
+    };
   }, []);
 
   /**

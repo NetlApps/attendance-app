@@ -136,9 +136,9 @@ powershell -ExecutionPolicy Bypass -File .\android\build-apk.ps1
 
 ```json
 {
-  "versionName": "1.4.5",
-  "versionCode": 10,
-  "apkUrl": "Attendance-1.4.5.apk",
+  "versionName": "1.4.6",
+  "versionCode": 11,
+  "apkUrl": "Attendance-1.4.6.apk",
   "sha256": "…",
   "size": 247000,
   "notes": "Что изменилось",
