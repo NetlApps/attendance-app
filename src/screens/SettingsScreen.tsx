@@ -12,7 +12,6 @@ import {
   parseBackupFile,
 } from '../storage';
 import {
-  OTA_LAST_CHECK_KEY,
   checkForUpdate,
   currentAppVersion,
   downloadUpdate,
@@ -432,11 +431,6 @@ export function SettingsScreen() {
     if (!isAndroidApp) {
       notify('OTA-обновления устанавливаются только в APK', 'info');
       return;
-    }
-    try {
-      localStorage.setItem(OTA_LAST_CHECK_KEY, String(Date.now()));
-    } catch {
-      // Частота автопроверки не критична.
     }
     if (checkForUpdate(trimmed)) {
       notify('Проверяем обновления…', 'info');

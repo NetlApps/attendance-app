@@ -11,11 +11,10 @@ import { useApp } from './store';
 import { nextPairNumber, todayISO } from './utils';
 import { useReminders } from './useReminders';
 import {
-  OTA_CHECK_INTERVAL_MS,
-  OTA_LAST_CHECK_KEY,
   checkForUpdate,
   downloadUpdate,
   formatBytes,
+  getOtaState,
   installUpdate,
   isAndroidApp,
   openUpdatePermission,
@@ -35,6 +34,18 @@ import { ReportsScreen } from './screens/ReportsScreen';
 import { StudentsScreen } from './screens/StudentsScreen';
 import { GroupsScreen } from './screens/GroupsScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
+
+const PENDING_OTA_STATES = new Set<OtaState['state']>([
+  'checking',
+  'available',
+  'downloading',
+  'ready',
+  'installing',
+  'need_permission',
+]);
+
+/** Повторная проверка при возврате в приложение — не чаще раза в минуту. */
+const AUTO_OTA_RECHECK_MS = 60_000;
 
 type Route =
   | { name: 'home' }
@@ -433,10 +444,15 @@ function UpdateBanner({
   const version = state.versionName ? ` ${state.versionName}` : '';
   const progress = state.progress ?? 0;
   const size = formatBytes(state.size);
+  const firstNote =
+    state.notes
+      ?.split('\n')
+      .map((line) => line.trim())
+      .find(Boolean) ?? '';
 
   let title = `Доступно обновление${version}`;
-  let detail = [size, state.notes].filter(Boolean).join(' · ');
-  let actionLabel = 'Скачать и установить';
+  let detail = [size, firstNote].filter(Boolean).join(' · ');
+  let actionLabel = 'Обновить';
   let action: (() => void) | null = () => downloadUpdate(true);
   let disabled = false;
 
@@ -582,27 +598,41 @@ function AppContent() {
   );
   const ota = useOtaState();
   const [dismissedOtaVersion, setDismissedOtaVersion] = useState<string | null>(null);
-  const autoOtaChecked = useRef(false);
+  const lastAutoCheckUrl = useRef<string | null>(null);
+  const lastAutoCheckEnabled = useRef<boolean | null>(null);
+  const lastOtaCheckAt = useRef(0);
 
   useEffect(() => {
-    if (autoOtaChecked.current) return;
-    if (!isAndroidApp() || !data.settings.updateUrl) return;
-    if (data.settings.autoUpdateCheck === false) return;
-    autoOtaChecked.current = true;
+    const enabled = data.settings.autoUpdateCheck !== false;
+    const url = data.settings.updateUrl ?? '';
+    const shouldCheckNow =
+      lastAutoCheckEnabled.current !== enabled || lastAutoCheckUrl.current !== url;
+    lastAutoCheckEnabled.current = enabled;
+    lastAutoCheckUrl.current = url;
 
-    let lastCheck = 0;
-    try {
-      lastCheck = Number(localStorage.getItem(OTA_LAST_CHECK_KEY)) || 0;
-    } catch {
-      lastCheck = 0;
-    }
-    if (Date.now() - lastCheck < OTA_CHECK_INTERVAL_MS) return;
-    try {
-      localStorage.setItem(OTA_LAST_CHECK_KEY, String(Date.now()));
-    } catch {
-      // Частота автопроверки не критична.
-    }
-    checkForUpdate(data.settings.updateUrl);
+    if (!isAndroidApp() || !url || !enabled) return;
+
+    const checkIfIdle = (force: boolean) => {
+      // Не перебиваем уже найденное, скачанное или устанавливаемое обновление.
+      if (PENDING_OTA_STATES.has(getOtaState().state)) return;
+      const now = Date.now();
+      if (!force && now - lastOtaCheckAt.current < AUTO_OTA_RECHECK_MS) return;
+      lastOtaCheckAt.current = now;
+      checkForUpdate(url);
+    };
+
+    // При каждом запуске проверяем сразу, без шестичасовой паузы.
+    if (shouldCheckNow) checkIfIdle(true);
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') checkIfIdle(false);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
   }, [data.settings.updateUrl, data.settings.autoUpdateCheck]);
 
   useEffect(() => {

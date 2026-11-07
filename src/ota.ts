@@ -27,9 +27,6 @@ export interface OtaState {
   checkedAt?: number;
 }
 
-export const OTA_LAST_CHECK_KEY = 'attendance-app-ota-last-check';
-export const OTA_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
-
 const EMPTY_STATE: OtaState = { state: 'idle' };
 const listeners = new Set<(state: OtaState) => void>();
 let current: OtaState = EMPTY_STATE;
