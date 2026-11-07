@@ -96,7 +96,9 @@ interface NavDragState {
   pointerId: number;
   startX: number;
   startY: number;
+  startIndex: number;
   active: boolean;
+  moved: boolean;
   lastIndex: number;
 }
 
@@ -111,8 +113,8 @@ const HIDDEN_CURSOR: NavCursorState = {
 
 /**
  * Нижнее меню с «жидким стеклянным» курсором.
- * Короткое нажатие работает как обычная кнопка, а удержание включает
- * перетаскивание курсора по вкладкам с тактильным откликом и анимацией.
+ * Короткое нажатие работает как обычная кнопка, горизонтальный свайп
+ * «листает» вкладки, а удержание включает перетаскивание курсора.
  */
 function BottomNav({
   activeName,
@@ -143,7 +145,12 @@ function BottomNav({
     }
   };
 
-  const pointToCursor = (clientX: number, clientY: number) => {
+  /**
+   * Положение курсора над вкладкой. При перетаскивании (`nearest`) вертикальный
+   * уход пальца игнорируется, а при отпускании за пределами меню берётся
+   * ближайшая по горизонтали вкладка — так свайп не «теряется».
+   */
+  const pointToCursor = (clientX: number, clientY: number, nearest = false) => {
     const nav = navRef.current;
     if (!nav) return null;
     const navRect = nav.getBoundingClientRect();
@@ -154,16 +161,25 @@ function BottomNav({
     let targetRect: DOMRect | null = null;
     items.forEach((item, itemIndex) => {
       const rect = item.getBoundingClientRect();
-      if (
-        clientX >= rect.left &&
-        clientX <= rect.right &&
-        clientY >= rect.top &&
-        clientY <= rect.bottom
-      ) {
+      const insideX = clientX >= rect.left && clientX <= rect.right;
+      const insideY = clientY >= rect.top - 6 && clientY <= rect.bottom + 6;
+      if (insideX && (nearest || insideY)) {
         index = itemIndex;
         targetRect = rect;
       }
     });
+    if (nearest && index < 0) {
+      let bestDistance = Number.POSITIVE_INFINITY;
+      items.forEach((item, itemIndex) => {
+        const rect = item.getBoundingClientRect();
+        const distance = Math.abs(clientX - (rect.left + rect.width / 2));
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          index = itemIndex;
+          targetRect = rect;
+        }
+      });
+    }
     const rect = targetRect as DOMRect | null;
     return {
       index,
@@ -174,6 +190,41 @@ function BottomNav({
     };
   };
 
+  const cursorForIndex = (index: number) => {
+    const nav = navRef.current;
+    if (!nav) return null;
+    const item = nav.querySelectorAll<HTMLButtonElement>('.bottom-nav-item')[index];
+    if (!item) return null;
+    const navRect = nav.getBoundingClientRect();
+    const rect = item.getBoundingClientRect();
+    return {
+      index,
+      x: rect.left + rect.width / 2 - navRect.left,
+      y: rect.top + rect.height / 2 - navRect.top,
+      width: rect.width,
+      height: rect.height,
+    };
+  };
+
+  const startDragging = (drag: NavDragState, clientX: number, clientY: number) => {
+    if (drag.active) return;
+    drag.active = true;
+    clearLongPress();
+    setDragging(true);
+    const point = pointToCursor(clientX, clientY, true);
+    if (point) {
+      setCursor({
+        visible: true,
+        snapping: false,
+        x: point.x,
+        y: point.y,
+        width: point.width,
+        height: point.height,
+      });
+    }
+    hapticTick();
+  };
+
   const handlePointerDown = (
     event: ReactPointerEvent<HTMLButtonElement>,
     index: number,
@@ -181,6 +232,7 @@ function BottomNav({
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     clearLongPress();
     clearHideCursor();
+    suppressClickRef.current = false;
     const target = event.currentTarget;
     try {
       target.setPointerCapture(event.pointerId);
@@ -191,41 +243,37 @@ function BottomNav({
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
+      startIndex: index,
       active: false,
+      moved: false,
       lastIndex: index,
     };
     longPressRef.current = window.setTimeout(() => {
       const drag = dragRef.current;
       if (!drag || drag.pointerId !== event.pointerId) return;
-      drag.active = true;
-      setDragging(true);
-      const point = pointToCursor(drag.startX, drag.startY);
-      if (point) {
-        setCursor({
-          visible: true,
-          snapping: false,
-          x: point.x,
-          y: point.y,
-          width: point.width,
-          height: point.height,
-        });
-      }
-      hapticTick();
+      startDragging(drag, drag.startX, drag.startY);
     }, 180);
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+
     if (!drag.active) {
-      const distance = Math.hypot(
-        event.clientX - drag.startX,
-        event.clientY - drag.startY,
-      );
-      if (distance > 9) clearLongPress();
-      return;
+      if (Math.hypot(dx, dy) > 9) clearLongPress();
+      // Горизонтальный свайп по меню включает «листание» сразу, без удержания.
+      if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
+        drag.moved = true;
+        startDragging(drag, event.clientX, event.clientY);
+      } else {
+        return;
+      }
     }
-    const point = pointToCursor(event.clientX, event.clientY);
+
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) drag.moved = true;
+    const point = pointToCursor(event.clientX, event.clientY, true);
     if (!point) return;
     if (point.index >= 0 && point.index !== drag.lastIndex) {
       drag.lastIndex = point.index;
@@ -252,12 +300,28 @@ function BottomNav({
     suppressClickRef.current = true;
     window.setTimeout(() => {
       suppressClickRef.current = false;
-    }, 0);
+    }, 400);
     setDragging(false);
 
-    const point = pointToCursor(event.clientX, event.clientY);
-    if (point && point.index >= 0) {
-      const tab = tabs[point.index];
+    const dx = event.clientX - drag.startX;
+    const releasePoint = pointToCursor(event.clientX, event.clientY, true);
+    let targetIndex = releasePoint ? releasePoint.index : drag.startIndex;
+    // Короткий «флик» в пределах одной вкладки листает на соседнюю.
+    if (
+      drag.moved &&
+      drag.startIndex >= 0 &&
+      targetIndex === drag.startIndex &&
+      Math.abs(dx) >= 14
+    ) {
+      targetIndex = Math.min(
+        tabs.length - 1,
+        Math.max(0, drag.startIndex + (dx < 0 ? 1 : -1)),
+      );
+    }
+
+    const point = cursorForIndex(targetIndex);
+    if (point) {
+      const tab = tabs[targetIndex];
       setCursor({
         visible: true,
         snapping: true,
