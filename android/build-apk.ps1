@@ -189,6 +189,13 @@ if (-not $DebugBuild) {
   Get-ChildItem $Docs -Filter 'Attendance-*.apk' -ErrorAction SilentlyContinue | Remove-Item -Force
   Copy-Item $VersionedApk $Docs -Force
   Copy-Item $UpdateJson $Docs -Force
+
+  # Живая веб-демонстрация (PWA) на GitHub Pages: docs/app/.
+  Write-Host 'Preparing web demo...'
+  $DocsApp = Join-Path $Docs 'app'
+  if (Test-Path $DocsApp) { Remove-Item $DocsApp -Recurse -Force }
+  Copy-Item $Dist $DocsApp -Recurse -Force
+
   Write-Host ("Pages: {0}" -f $Docs)
 }
 

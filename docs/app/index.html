@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="Учёт посещаемости учебной группы: отметки по парам, календарь, напоминания и месячный отчёт." />
+    <meta name="theme-color" content="#4f46e5" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Посещаемость" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <title>Посещаемость</title>
+    <script>
+      try {
+        var saved = localStorage.getItem('attendance-app-data-v1');
+        if (saved) {
+          var parsed = JSON.parse(saved);
+          var theme = parsed && parsed.settings && parsed.settings.theme;
+          if (typeof theme === 'string') {
+            document.documentElement.dataset.theme = theme;
+          }
+        }
+      } catch (error) {
+        /* тема применится после загрузки приложения */
+      }
+    </script>
+    <script type="module" crossorigin src="./assets/index-Dps44rFU.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-CqUd33So.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
