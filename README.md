@@ -389,7 +389,7 @@ attendance-app/
 │  ├─ make-icons.ps1         # повторная генерация PNG-иконок
 │  └─ update-server.mjs      # локальная раздача release/ для OTA
 ├─ release/                  # версионные APK и update.json
-├─ docs/                     # GitHub Pages: страница загрузки, APK и update.json
+├─ docs/                     # GitHub Pages: страница загрузки, APK, update.json и веб-демо app/
 ├─ src/
 │  ├─ components/            # модальные окна, иконки, статусы и т.п.
 │  ├─ screens/               # главная, отметка, календарь, отчёты, настройки
