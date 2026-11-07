@@ -484,8 +484,8 @@ public class MainActivity extends Activity {
 
     /** Показывает проверочное уведомление сразу. */
     @JavascriptInterface
-    public void testNotificationNow() {
-      ReminderNotifier.showTest(getApplicationContext());
+    public boolean testNotificationNow() {
+      return ReminderNotifier.showTest(getApplicationContext());
     }
 
     /** Показывает проверочное уведомление через несколько секунд — можно закрыть приложение. */

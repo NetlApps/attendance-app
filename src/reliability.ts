@@ -90,8 +90,7 @@ export function openNotificationSettings(): void {
 
 export function testNotificationNow(): boolean {
   if (!window.AndroidApp?.testNotificationNow) return false;
-  window.AndroidApp.testNotificationNow();
-  return true;
+  return window.AndroidApp.testNotificationNow() !== false;
 }
 
 export function testNotificationDelayed(seconds: number): boolean {

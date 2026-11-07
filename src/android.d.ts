@@ -51,8 +51,8 @@ declare global {
     openAppSettings?: () => void;
     /** Открывает системный экран «Уведомления» приложения. */
     openNotificationSettings?: () => void;
-    /** Показывает проверочное уведомление сразу. */
-    testNotificationNow?: () => void;
+    /** Показывает проверочное уведомление сразу. Возвращает false, если уведомления запрещены. */
+    testNotificationNow?: () => boolean;
     /** Показывает проверочное уведомление через указанное число секунд. */
     testNotificationDelayed?: (seconds: number) => void;
   }

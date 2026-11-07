@@ -121,9 +121,15 @@ export function SettingsScreen() {
 
   useEffect(() => {
     if (!isAndroidApp) return;
-    const refresh = () => setReliability(readReliabilityState());
+    const refresh = () => {
+      setReliability(readReliabilityState());
+      setPermission(notificationState());
+    };
     refresh();
-    const unsubscribe = subscribeReliability(setReliability);
+    const unsubscribe = subscribeReliability((state) => {
+      setReliability(state);
+      setPermission(state.notifications);
+    });
     window.addEventListener('focus', refresh);
     document.addEventListener('visibilitychange', refresh);
     return () => {
@@ -352,19 +358,38 @@ export function SettingsScreen() {
     else if (result === 'unsupported') notify('Системные уведомления не поддерживаются', 'error');
   };
 
-  const refreshReliability = () => setReliability(readReliabilityState());
+  const refreshReliability = () => {
+    setReliability(readReliabilityState());
+    setPermission(notificationState());
+  };
 
   const handleTestNow = () => {
-    if (!testNotificationNow()) {
+    if (!isAndroidApp) {
       notify('Проверка доступна только в установленном APK', 'info');
+      return;
+    }
+    if (reliability?.notifications !== 'granted') {
+      notify('Сначала разрешите уведомления', 'error');
+      return;
+    }
+    if (!testNotificationNow()) {
+      notify('Уведомления запрещены в настройках Android', 'error');
       return;
     }
     notify('Проверочное уведомление отправлено');
   };
 
   const handleTestDelayed = () => {
-    if (!testNotificationDelayed(10)) {
+    if (!isAndroidApp) {
       notify('Проверка доступна только в установленном APK', 'info');
+      return;
+    }
+    if (reliability?.notifications !== 'granted') {
+      notify('Сначала разрешите уведомления', 'error');
+      return;
+    }
+    if (!testNotificationDelayed(10)) {
+      notify('Не удалось запланировать проверку', 'error');
       return;
     }
     notify('Уведомление придёт через 10 секунд — приложение можно закрыть', 'info');

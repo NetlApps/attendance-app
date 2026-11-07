@@ -55,7 +55,9 @@ public final class ReminderNotifier {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       NotificationManager manager =
           (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-      return manager != null && manager.areNotificationsEnabled();
+      if (manager == null || !manager.areNotificationsEnabled()) return false;
+      NotificationChannel channel = manager.getNotificationChannel(CHANNEL_ID);
+      return channel == null || channel.getImportance() != NotificationManager.IMPORTANCE_NONE;
     }
     return true;
   }
@@ -69,21 +71,22 @@ public final class ReminderNotifier {
   }
 
   /** Тестовое уведомление: проверяет разрешения, канал, звук и показ на экране блокировки. */
-  public static void showTest(Context context) {
-    showMessage(
+  public static boolean showTest(Context context) {
+    return showMessage(
         context,
         "Проверка уведомлений",
         "Уведомления работают. Напоминания придут, даже если приложение закрыто.",
         9999);
   }
 
-  public static void showMessage(Context context, String title, String body, int notificationId) {
-    if (!canNotify(context)) return;
+  public static boolean showMessage(
+      Context context, String title, String body, int notificationId) {
+    if (!canNotify(context)) return false;
     ensureChannel(context);
 
     NotificationManager manager =
         (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-    if (manager == null) return;
+    if (manager == null) return false;
 
     Intent intent = new Intent(context, MainActivity.class);
     intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
@@ -118,5 +121,6 @@ public final class ReminderNotifier {
     }
 
     manager.notify(notificationId, builder.build());
+    return true;
   }
 }
