@@ -162,7 +162,7 @@ export function GroupsScreen({ onBack, onSelected, onStudents }: GroupsScreenPro
       <div className="info-note">
         <Icon name="info" size={18} />
         <span>
-          При первом запуске уже создана группа «Моя группа» с 29 студентами из ведомости.
+          При первом запуске создаётся группа «Моя группа» со стартовым списком студентов.
           Название можно изменить, а список — дополнить или очистить.
         </span>
       </div>
