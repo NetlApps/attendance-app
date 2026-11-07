@@ -84,6 +84,10 @@ export function openAppSettings(): void {
   window.AndroidApp?.openAppSettings?.();
 }
 
+export function openNotificationSettings(): void {
+  window.AndroidApp?.openNotificationSettings?.();
+}
+
 export function testNotificationNow(): boolean {
   if (!window.AndroidApp?.testNotificationNow) return false;
   window.AndroidApp.testNotificationNow();

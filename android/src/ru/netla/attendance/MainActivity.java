@@ -477,6 +477,11 @@ public class MainActivity extends Activity {
       runOnUiThread(() -> ReliabilityManager.openAppSettings(MainActivity.this));
     }
 
+    @JavascriptInterface
+    public void openNotificationSettings() {
+      runOnUiThread(() -> ReliabilityManager.openNotificationSettings(MainActivity.this));
+    }
+
     /** Показывает проверочное уведомление сразу. */
     @JavascriptInterface
     public void testNotificationNow() {

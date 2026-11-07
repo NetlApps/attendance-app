@@ -3,6 +3,7 @@ import {
   CLASS_HOUR_PAIR_NUMBER,
   DATA_VERSION,
   DEFAULT_THEME,
+  DEFAULT_UPDATE_URL,
   FIRED_REMINDERS_KEY,
   isThemeId,
   STORAGE_KEY,
@@ -166,9 +167,15 @@ function normalizeSettings(input: unknown, groups: Group[]): Settings {
       : fallbackGroupId;
 
   const rawUpdateUrl = asString(source.updateUrl);
+  // Старый адрес локального сервера заменяем на публичный GitHub Pages,
+  // чтобы OTA продолжала работать без провода и adb reverse.
+  const isLocalTestUrl =
+    /^http:\/\/(?:127\.0\.0\.1|localhost):8787\/update\.json$/i.test(rawUpdateUrl);
   const updateUrl =
     /^https?:\/\/\S+$/i.test(rawUpdateUrl) && rawUpdateUrl.length <= 2048
-      ? rawUpdateUrl
+      ? isLocalTestUrl
+        ? DEFAULT_UPDATE_URL
+        : rawUpdateUrl
       : undefined;
 
   return {
@@ -307,7 +314,17 @@ export function loadData(): AppData {
       parsed && typeof parsed === 'object'
         ? Number((parsed as { version?: unknown }).version)
         : Number.NaN;
-    if (!Number.isFinite(storedVersion) || storedVersion !== DATA_VERSION) {
+    const storedUpdateUrl =
+      parsed && typeof parsed === 'object'
+        ? (parsed as { settings?: { updateUrl?: unknown } }).settings?.updateUrl
+        : undefined;
+    const needsSettingsMigration =
+      typeof storedUpdateUrl === 'string' && storedUpdateUrl !== data.settings.updateUrl;
+    if (
+      !Number.isFinite(storedVersion) ||
+      storedVersion !== DATA_VERSION ||
+      needsSettingsMigration
+    ) {
       saveData(data);
     }
     return data;

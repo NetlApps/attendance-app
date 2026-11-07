@@ -136,6 +136,22 @@ public final class ReliabilityManager {
     }
   }
 
+  /** Открывает экран «Уведомления» конкретного приложения. */
+  public static void openNotificationSettings(Context context) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      try {
+        Intent intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+        intent.putExtra(Settings.EXTRA_APP_PACKAGE, context.getPackageName());
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        context.startActivity(intent);
+        return;
+      } catch (Exception ignored) {
+        // Ниже откроем общие настройки приложения.
+      }
+    }
+    openAppSettings(context);
+  }
+
   public static boolean isXiaomi() {
     String manufacturer = Build.MANUFACTURER == null ? "" : Build.MANUFACTURER.toLowerCase(Locale.ROOT);
     return manufacturer.contains("xiaomi")

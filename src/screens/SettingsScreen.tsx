@@ -38,6 +38,7 @@ import {
   isXiaomiLike,
   openAutostartSettings,
   openBatterySettings,
+  openNotificationSettings,
   readReliabilityState,
   requestBatteryExemption,
   requestExactAlarms,
@@ -731,8 +732,16 @@ export function SettingsScreen() {
             <span className={`permission-dot permission-${permission}`} />
             <span>{permissionText}</span>
             {permission !== 'granted' && permission !== 'unsupported' && (
-              <button type="button" className="text-button" onClick={handleRequestPermission}>
-                Разрешить
+              <button
+                type="button"
+                className="text-button"
+                onClick={
+                  permission === 'denied' && isAndroidApp
+                    ? openNotificationSettings
+                    : handleRequestPermission
+                }
+              >
+                {permission === 'denied' && isAndroidApp ? 'Настройки' : 'Разрешить'}
               </button>
             )}
           </div>
@@ -765,9 +774,13 @@ export function SettingsScreen() {
                   <button
                     type="button"
                     className="text-button"
-                    onClick={handleRequestPermission}
+                    onClick={
+                      reliability.notifications === 'denied'
+                        ? openNotificationSettings
+                        : handleRequestPermission
+                    }
                   >
-                    Разрешить
+                    {reliability.notifications === 'denied' ? 'Настройки' : 'Разрешить'}
                   </button>
                 )}
               </div>

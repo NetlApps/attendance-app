@@ -1,4 +1,9 @@
-import { CLASS_HOUR_PAIR_NUMBER, DATA_VERSION, DEFAULT_THEME } from './constants';
+import {
+  CLASS_HOUR_PAIR_NUMBER,
+  DATA_VERSION,
+  DEFAULT_THEME,
+  DEFAULT_UPDATE_URL,
+} from './constants';
 import type { AppData, ScheduleItem } from './types';
 
 /**
@@ -125,6 +130,7 @@ export function createSeedData(): AppData {
         weekdays: [...defaultReminders.weekdays],
       },
       theme: DEFAULT_THEME,
+      updateUrl: DEFAULT_UPDATE_URL,
       autoUpdateCheck: true,
     },
   };
@@ -148,6 +154,7 @@ export function createEmptyData(): AppData {
         weekdays: [...defaultReminders.weekdays],
       },
       theme: DEFAULT_THEME,
+      updateUrl: DEFAULT_UPDATE_URL,
       autoUpdateCheck: true,
     },
   };

@@ -49,6 +49,8 @@ declare global {
     openAutostartSettings?: () => void;
     /** Открывает системные настройки приложения. */
     openAppSettings?: () => void;
+    /** Открывает системный экран «Уведомления» приложения. */
+    openNotificationSettings?: () => void;
     /** Показывает проверочное уведомление сразу. */
     testNotificationNow?: () => void;
     /** Показывает проверочное уведомление через указанное число секунд. */
