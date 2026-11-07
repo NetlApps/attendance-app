@@ -59,6 +59,9 @@ public class MainActivity extends Activity {
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
 
+    // Канал создаём заранее: так Android не потеряет важность и звук уведомлений.
+    ReminderNotifier.ensureChannel(this);
+
     webView = new WebView(this);
     webView.setBackgroundColor(0xFFF3F5FB);
     setContentView(webView);
@@ -230,6 +233,34 @@ public class MainActivity extends Activity {
     }
     SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
     return prefs.getBoolean(PREF_NOTIFICATION_ASKED, false) ? "denied" : "default";
+  }
+
+  @Override
+  protected void onResume() {
+    super.onResume();
+    // Пользователь мог вернуться из системных настроек — обновляем статусы в интерфейсе.
+    emitReliabilityState();
+  }
+
+  @Override
+  public void onRequestPermissionsResult(
+      int requestCode, String[] permissions, int[] grantResults) {
+    super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+    if (requestCode == NOTIFICATION_PERMISSION_REQUEST) {
+      emitReliabilityState();
+    }
+  }
+
+  /** Передаёт в JavaScript свежие статусы разрешений для фоновых напоминаний. */
+  private void emitReliabilityState() {
+    runOnUiThread(
+        () -> {
+          if (webView == null) return;
+          String quoted =
+              JSONObject.quote(ReliabilityManager.getState(getApplicationContext()));
+          webView.evaluateJavascript(
+              "window.__onReliabilityEvent && window.__onReliabilityEvent(" + quoted + ");", null);
+        });
   }
 
   @Override
@@ -412,6 +443,51 @@ public class MainActivity extends Activity {
       runOnUiThread(
           () -> UpdateManager.openInstallPermission(getApplicationContext()));
     }
+
+    /** Статусы уведомлений, точных будильников и ограничений батареи в формате JSON. */
+    @JavascriptInterface
+    public String getReliabilityState() {
+      return ReliabilityManager.getState(getApplicationContext());
+    }
+
+    @JavascriptInterface
+    public void requestExactAlarms() {
+      runOnUiThread(
+          () -> ReliabilityManager.requestExactAlarmPermission(MainActivity.this));
+    }
+
+    @JavascriptInterface
+    public void requestBatteryExemption() {
+      runOnUiThread(
+          () -> ReliabilityManager.requestBatteryOptimizationExemption(MainActivity.this));
+    }
+
+    @JavascriptInterface
+    public void openBatterySettings() {
+      runOnUiThread(() -> ReliabilityManager.openBatterySettings(MainActivity.this));
+    }
+
+    @JavascriptInterface
+    public void openAutostartSettings() {
+      runOnUiThread(() -> ReliabilityManager.openAutostartSettings(MainActivity.this));
+    }
+
+    @JavascriptInterface
+    public void openAppSettings() {
+      runOnUiThread(() -> ReliabilityManager.openAppSettings(MainActivity.this));
+    }
+
+    /** Показывает проверочное уведомление сразу. */
+    @JavascriptInterface
+    public void testNotificationNow() {
+      ReminderNotifier.showTest(getApplicationContext());
+    }
+
+    /** Показывает проверочное уведомление через несколько секунд — можно закрыть приложение. */
+    @JavascriptInterface
+    public void testNotificationDelayed(int seconds) {
+      ReminderScheduler.scheduleTest(getApplicationContext(), seconds);
+    }
   }
 
   /** РџРµСЂРµРґР°С‘С‚ СЃРѕСЃС‚РѕСЏРЅРёРµ OTA-Р·Р°РіСЂСѓР·С‡РёРєР° РІ JavaScript. */
@@ -518,42 +594,10 @@ public class MainActivity extends Activity {
   }
 
   private void showNotification(String title, String body) {
-    runOnUiThread(
-        () -> {
-          if (Build.VERSION.SDK_INT >= 33
-              && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
-                  != PackageManager.PERMISSION_GRANTED) {
-            return;
-          }
-          NotificationManager manager =
-              (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel =
-                new NotificationChannel(
-                    CHANNEL_ID, "РќР°РїРѕРјРёРЅР°РЅРёСЏ", NotificationManager.IMPORTANCE_DEFAULT);
-            channel.setDescription("РќР°РїРѕРјРёРЅР°РЅРёСЏ РѕС‚РјРµС‚РёС‚СЊ РїРѕСЃРµС‰Р°РµРјРѕСЃС‚СЊ");
-            manager.createNotificationChannel(channel);
-          }
-          Intent intent = new Intent(MainActivity.this, MainActivity.class);
-          intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-          PendingIntent pendingIntent =
-              PendingIntent.getActivity(
-                  MainActivity.this,
-                  0,
-                  intent,
-                  PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-          Notification.Builder builder =
-              Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-                  ? new Notification.Builder(MainActivity.this, CHANNEL_ID)
-                  : new Notification.Builder(MainActivity.this);
-          builder
-              .setSmallIcon(android.R.drawable.ic_dialog_info)
-              .setContentTitle(title == null ? "РџРѕСЃРµС‰Р°РµРјРѕСЃС‚СЊ" : title)
-              .setContentText(body == null ? "" : body)
-              .setStyle(new Notification.BigTextStyle().bigText(body == null ? "" : body))
-              .setContentIntent(pendingIntent)
-              .setAutoCancel(true);
-          manager.notify(1001, builder.build());
-        });
+    ReminderNotifier.showMessage(
+        getApplicationContext(),
+        title == null ? "Посещаемость" : title,
+        body == null ? "" : body,
+        1001);
   }
 }

@@ -25,11 +25,13 @@ public final class ReminderScheduler {
   public static final String PREF_WEEKDAYS = "reminder_weekdays";
   public static final String PREF_GROUP = "reminder_group";
   public static final String ACTION_REMINDER = "ru.netla.attendance.REMINDER";
+  public static final String ACTION_TEST = "ru.netla.attendance.TEST_REMINDER";
   public static final String EXTRA_WEEKDAY = "weekday";
   public static final String EXTRA_TIME = "time";
   public static final String EXTRA_ID = "notification_id";
 
   private static final int MAX_TIMES = 32;
+  private static final int TEST_REQUEST_CODE = 990001;
 
   private ReminderScheduler() {}
 
@@ -74,6 +76,31 @@ public final class ReminderScheduler {
     List<String> times = readStrings(prefs.getString(PREF_TIMES, "[]"));
     List<Integer> weekdays = readInts(prefs.getString(PREF_WEEKDAYS, "[]"));
     return weekdays.contains(weekday) && times.contains(time);
+  }
+
+  /** Ставит проверочное уведомление через несколько секунд. */
+  public static void scheduleTest(Context context, int seconds) {
+    AlarmManager manager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+    if (manager == null) return;
+
+    Intent intent = new Intent(context, ReminderReceiver.class);
+    intent.setAction(ACTION_TEST);
+    PendingIntent pendingIntent =
+        PendingIntent.getBroadcast(
+            context,
+            TEST_REQUEST_CODE,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+    // Повторное нажатие «Через 10 секунд» заменяет предыдущий тест.
+    manager.cancel(pendingIntent);
+    long trigger =
+        System.currentTimeMillis() + Math.max(1, Math.min(120, seconds)) * 1000L;
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !manager.canScheduleExactAlarms()) {
+      manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, trigger, pendingIntent);
+    } else {
+      manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, trigger, pendingIntent);
+    }
   }
 
   private static void scheduleAlarm(

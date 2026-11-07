@@ -34,6 +34,18 @@ import {
   todayISO,
   weekdayNumber,
 } from '../utils';
+import {
+  isXiaomiLike,
+  openAutostartSettings,
+  openBatterySettings,
+  readReliabilityState,
+  requestBatteryExemption,
+  requestExactAlarms,
+  subscribeReliability,
+  testNotificationDelayed,
+  testNotificationNow,
+  type ReliabilityState,
+} from '../reliability';
 import { Icon } from '../components/Icon';
 import { PageHeader } from '../components/PageHeader';
 
@@ -73,6 +85,9 @@ export function SettingsScreen() {
   );
   const [scheduleDay, setScheduleDay] = useState<number>(() => weekdayNumber(todayISO()));
   const [permission, setPermission] = useState<NotificationState>(() => notificationState());
+  const [reliability, setReliability] = useState<ReliabilityState | null>(() =>
+    readReliabilityState(),
+  );
   const importRef = useRef<HTMLInputElement | null>(null);
   const isAndroidApp = typeof window !== 'undefined' && Boolean(window.AndroidApp);
   const ota = useOtaState();
@@ -102,6 +117,20 @@ export function SettingsScreen() {
   useEffect(() => {
     setAppVersion(currentAppVersion());
   }, []);
+
+  useEffect(() => {
+    if (!isAndroidApp) return;
+    const refresh = () => setReliability(readReliabilityState());
+    refresh();
+    const unsubscribe = subscribeReliability(setReliability);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [isAndroidApp]);
 
   const updateReminderTime = (index: number, value: string) => {
     setReminders((current) => ({
@@ -310,6 +339,7 @@ export function SettingsScreen() {
   const handleRequestPermission = async () => {
     const result = await requestNotifications();
     setPermission(result);
+    setReliability(readReliabilityState());
     if (result === 'granted') notify('Уведомления разрешены');
     else if (result === 'denied')
       notify(
@@ -319,6 +349,29 @@ export function SettingsScreen() {
         'error',
       );
     else if (result === 'unsupported') notify('Системные уведомления не поддерживаются', 'error');
+  };
+
+  const refreshReliability = () => setReliability(readReliabilityState());
+
+  const handleTestNow = () => {
+    if (!testNotificationNow()) {
+      notify('Проверка доступна только в установленном APK', 'info');
+      return;
+    }
+    notify('Проверочное уведомление отправлено');
+  };
+
+  const handleTestDelayed = () => {
+    if (!testNotificationDelayed(10)) {
+      notify('Проверка доступна только в установленном APK', 'info');
+      return;
+    }
+    notify('Уведомление придёт через 10 секунд — приложение можно закрыть', 'info');
+  };
+
+  const handleBattery = () => {
+    if (reliability?.batteryOptimized) requestBatteryExemption();
+    else openBatterySettings();
   };
 
   const handleSaveUpdateSettings = () => {
@@ -683,6 +736,112 @@ export function SettingsScreen() {
               </button>
             )}
           </div>
+
+          {isAndroidApp && reliability && (
+            <div className="reliability-panel">
+              <div className="section-subhead">
+                <span className="field-label">Надёжность напоминаний</span>
+                <button type="button" className="text-button" onClick={refreshReliability}>
+                  <Icon name="restore" size={15} />
+                  Проверить
+                </button>
+              </div>
+
+              <div className="reliability-row">
+                <span
+                  className={`permission-dot permission-${
+                    reliability.notifications === 'granted' ? 'granted' : 'denied'
+                  }`}
+                />
+                <span className="reliability-text">
+                  <strong>Уведомления</strong>
+                  <small>
+                    {reliability.notifications === 'granted'
+                      ? 'Разрешены — система покажет напоминание'
+                      : 'Запрещены — напоминания не появятся'}
+                  </small>
+                </span>
+                {reliability.notifications !== 'granted' && (
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={handleRequestPermission}
+                  >
+                    Разрешить
+                  </button>
+                )}
+              </div>
+
+              <div className="reliability-row">
+                <span
+                  className={`permission-dot ${
+                    reliability.exactAlarms ? 'permission-granted' : 'permission-denied'
+                  }`}
+                />
+                <span className="reliability-text">
+                  <strong>Точные будильники</strong>
+                  <small>
+                    {reliability.exactAlarms
+                      ? 'Разрешены — напоминание придёт вовремя'
+                      : 'Запрещены — Android может задержать напоминание'}
+                  </small>
+                </span>
+                {!reliability.exactAlarms && (
+                  <button type="button" className="text-button" onClick={requestExactAlarms}>
+                    Разрешить
+                  </button>
+                )}
+              </div>
+
+              <div className="reliability-row">
+                <span
+                  className={`permission-dot ${
+                    reliability.batteryOptimized ? 'permission-denied' : 'permission-granted'
+                  }`}
+                />
+                <span className="reliability-text">
+                  <strong>Ограничения батареи</strong>
+                  <small>
+                    {reliability.batteryOptimized
+                      ? 'Включены — система может останавливать приложение'
+                      : 'Сняты — фоновая работа не ограничена'}
+                  </small>
+                </span>
+                <button type="button" className="text-button" onClick={handleBattery}>
+                  {reliability.batteryOptimized ? 'Снять' : 'Проверить'}
+                </button>
+              </div>
+
+              {isXiaomiLike(reliability) && (
+                <div className="reliability-row">
+                  <span className="permission-dot permission-neutral" />
+                  <span className="reliability-text">
+                    <strong>Автозапуск Xiaomi</strong>
+                    <small>Проверьте вручную и разрешите автозапуск приложения</small>
+                  </span>
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={openAutostartSettings}
+                  >
+                    Открыть
+                  </button>
+                </div>
+              )}
+
+              <div className="reliability-test">
+                <button type="button" className="btn btn-secondary" onClick={handleTestNow}>
+                  Проверить сейчас
+                </button>
+                <button type="button" className="btn btn-secondary" onClick={handleTestDelayed}>
+                  Через 10 секунд
+                </button>
+              </div>
+              <p className="field-hint">
+                Для проверки фоновой доставки нажмите «Через 10 секунд» и закройте приложение.
+              </p>
+            </div>
+          )}
 
           <div className="inline-note">
             <Icon name="info" size={18} />

@@ -37,11 +37,29 @@ declare global {
     notificationPermission?: () => 'granted' | 'denied' | 'default';
     /** Запрашивает разрешение на уведомления Android. */
     requestNotificationPermission?: () => void;
+    /** Статусы разрешений для фоновых напоминаний в формате JSON. */
+    getReliabilityState?: () => string;
+    /** Открывает системный запрос точных будильников. */
+    requestExactAlarms?: () => void;
+    /** Открывает запрос на снятие ограничений батареи. */
+    requestBatteryExemption?: () => void;
+    /** Открывает системный список ограничений батареи. */
+    openBatterySettings?: () => void;
+    /** Открывает настройки автозапуска (Xiaomi/Redmi/POCO). */
+    openAutostartSettings?: () => void;
+    /** Открывает системные настройки приложения. */
+    openAppSettings?: () => void;
+    /** Показывает проверочное уведомление сразу. */
+    testNotificationNow?: () => void;
+    /** Показывает проверочное уведомление через указанное число секунд. */
+    testNotificationDelayed?: (seconds: number) => void;
   }
 
   interface Window {
     AndroidApp?: AndroidAppBridge;
     /** Нативный загрузчик обновлений передаёт сюда состояние OTA. */
     __onOtaEvent?: (json: string) => void;
+    /** Нативная часть передаёт сюда статусы разрешений для напоминаний. */
+    __onReliabilityEvent?: (json: string) => void;
   }
 }

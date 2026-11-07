@@ -9,7 +9,16 @@ import android.content.SharedPreferences;
 public class ReminderReceiver extends BroadcastReceiver {
   @Override
   public void onReceive(Context context, Intent intent) {
-    if (intent == null || !ReminderScheduler.ACTION_REMINDER.equals(intent.getAction())) return;
+    if (intent == null) return;
+    String action = intent.getAction();
+
+    // Проверочное уведомление не зависит от расписания и настроек дней недели.
+    if (ReminderScheduler.ACTION_TEST.equals(action)) {
+      ReminderNotifier.showTest(context);
+      return;
+    }
+
+    if (!ReminderScheduler.ACTION_REMINDER.equals(action)) return;
 
     int weekday = intent.getIntExtra(ReminderScheduler.EXTRA_WEEKDAY, 0);
     String time = intent.getStringExtra(ReminderScheduler.EXTRA_TIME);

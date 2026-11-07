@@ -1,6 +1,6 @@
 import type { Status, ThemeId } from './types';
 
-export const APP_VERSION = '1.4.1';
+export const APP_VERSION = '1.4.2';
 export const DATA_VERSION = 2;
 export const STORAGE_KEY = 'attendance-app-data-v1';
 export const FIRED_REMINDERS_KEY = 'attendance-app-fired-reminders-v1';
