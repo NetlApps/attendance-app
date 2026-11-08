@@ -1,5 +1,6 @@
 import { useEffect, useId, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { pushBackHandler } from '../backHandler';
 import { Icon } from './Icon';
 
 interface ModalProps {
@@ -14,6 +15,15 @@ interface ModalProps {
 
 export function Modal({ open, title, subtitle, onClose, children, footer, wide }: ModalProps) {
   const titleId = useId();
+
+  useEffect(() => {
+    if (!open) return;
+    const removeBackHandler = pushBackHandler(() => {
+      onClose();
+      return true;
+    });
+    return removeBackHandler;
+  }, [open, onClose]);
 
   useEffect(() => {
     if (!open) return;

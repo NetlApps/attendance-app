@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { flushSync } from 'react-dom';
 import { useApp } from './store';
+import { runTopBackHandler } from './backHandler';
 import { nextPairNumber, todayISO } from './utils';
 import { useReminders } from './useReminders';
 import {
@@ -671,6 +672,18 @@ function AppContent() {
       setStack(stack.slice(0, -1));
     });
   };
+
+  useEffect(() => {
+    window.__androidBack = () => {
+      if (runTopBackHandler()) return true;
+      if (route.name === 'home' && stack.length === 0) return false;
+      back();
+      return true;
+    };
+    return () => {
+      delete window.__androidBack;
+    };
+  }, [route, stack]);
 
   const replace = (next: Route) => {
     runTransition(() => setRoute(next));

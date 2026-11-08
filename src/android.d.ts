@@ -63,5 +63,7 @@ declare global {
     __onOtaEvent?: (json: string) => void;
     /** Нативная часть передаёт сюда статусы разрешений для напоминаний. */
     __onReliabilityEvent?: (json: string) => void;
+    /** Системный «назад» в APK: возвращает true, если приложение обработало шаг. */
+    __androidBack?: () => boolean;
   }
 }

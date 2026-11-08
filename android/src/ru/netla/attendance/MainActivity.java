@@ -107,7 +107,7 @@ public class MainActivity extends Activity {
 
           @Override
           public void onPageFinished(WebView view, String url) {
-            injectBackHandler(view);
+            // Обработчик системного «назад» регистрирует React-приложение.
           }
         });
 
@@ -191,23 +191,6 @@ public class MainActivity extends Activity {
     } catch (Exception ignored) {
       // РћС„РѕСЂРјР»РµРЅРёРµ СЃРёСЃС‚РµРјРЅС‹С… РїР°РЅРµР»РµР№ РЅРµ РєСЂРёС‚РёС‡РЅРѕ РґР»СЏ СЂР°Р±РѕС‚С‹ РїСЂРёР»РѕР¶РµРЅРёСЏ.
     }
-  }
-
-  private void injectBackHandler(WebView view) {
-    String script =
-        "(function(){"
-            + "if(!window.__androidBack){window.__androidBack=function(){"
-            + "try{"
-            + "var back=document.querySelector('[aria-label=\"РќР°Р·Р°Рґ\"]');"
-            + "if(back){back.click();return true;}"
-            + "var items=Array.prototype.slice.call(document.querySelectorAll('.bottom-nav-item'));"
-            + "var home=items.filter(function(el){return (el.textContent||'').indexOf('Р“Р»Р°РІРЅР°СЏ')>=0;})[0];"
-            + "if(home&&!home.classList.contains('is-active')){home.click();return true;}"
-            + "return false;"
-            + "}catch(e){return false;}"
-            + "};}"
-            + "})();";
-    view.evaluateJavascript(script, null);
   }
 
   private void requestNotificationPermissionIfNeeded() {
