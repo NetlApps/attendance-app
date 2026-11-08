@@ -176,8 +176,10 @@ export function HomeScreen({
             <strong>Отметить посещаемость</strong>
             <span>
               {currentPair
-                ? `${pairTimeLabel(todaySchedule, currentPair)} · по одному студенту`
-                : 'Выберите дату и пару — дальше всё по шагам'}
+                ? `${pairTimeLabel(todaySchedule, currentPair)} · ${
+                    data.settings.markingMode === 'list' ? 'списком' : 'по одному студенту'
+                  }`
+                : 'Выберите дату и пару — дальше как удобнее'}
             </span>
           </span>
           <Icon name="chevron-right" size={24} />

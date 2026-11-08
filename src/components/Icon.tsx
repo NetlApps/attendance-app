@@ -7,6 +7,7 @@ export type IconName =
   | 'users'
   | 'settings'
   | 'plus'
+  | 'minus'
   | 'arrow-left'
   | 'chevron-left'
   | 'chevron-right'
@@ -95,6 +96,7 @@ export function Icon({ name, size = 22, ...rest }: IconProps) {
           <line x1="5" y1="12" x2="19" y2="12" />
         </>
       )}
+      {name === 'minus' && <line x1="5" y1="12" x2="19" y2="12" />}
       {name === 'arrow-left' && (
         <>
           <line x1="19" y1="12" x2="5" y2="12" />

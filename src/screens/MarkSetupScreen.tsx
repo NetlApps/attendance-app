@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { STATUS_ORDER } from '../constants';
+import type { MarkingMode } from '../types';
 import { useApp } from '../store';
 import {
   capitalizeFirst,
@@ -27,7 +28,7 @@ interface MarkSetupScreenProps {
   initialDate?: string;
   initialPair?: number;
   onBack: () => void;
-  onStart: (date: string, pairNumber: number) => void;
+  onStart: (date: string, pairNumber: number, mode: MarkingMode) => void;
   onSummary: (date: string, pairNumber: number) => void;
   onStudents: () => void;
   onGroups: () => void;
@@ -42,9 +43,12 @@ export function MarkSetupScreen({
   onStudents,
   onGroups,
 }: MarkSetupScreenProps) {
-  const { data, activeGroup, activeStudents, clearPairAttendance, copyPairAttendance, markAllPresent, notify } =
+  const { data, activeGroup, activeStudents, clearPairAttendance, copyPairAttendance, markAllPresent, notify, saveSettings } =
     useApp();
   const [date, setDate] = useState(initialDate ?? todayISO());
+  const [markingMode, setMarkingMode] = useState<MarkingMode>(
+    data.settings.markingMode === 'list' ? 'list' : 'single',
+  );
   const dateSchedule = scheduleForDate(data.settings, date);
   const slotNumbers = useMemo(() => slotNumbersForDate(dateSchedule), [dateSchedule]);
   const [pairNumber, setPairNumber] = useState(() => {
@@ -62,6 +66,13 @@ export function MarkSetupScreen({
     const nextSlots = slotNumbersForDate(nextSchedule);
     if (!nextSlots.includes(pairNumber)) {
       setPairNumber(nextSlots[0] ?? 1);
+    }
+  };
+
+  const changeMarkingMode = (mode: MarkingMode) => {
+    setMarkingMode(mode);
+    if (data.settings.markingMode !== mode) {
+      saveSettings({ ...data.settings, markingMode: mode });
     }
   };
 
@@ -112,7 +123,11 @@ export function MarkSetupScreen({
         `Скопировано ${slotFrom(previousPair)}: ${copied}. Отметьте ушедших и пришедших.`,
       );
     }
-    onSummary(date, pairNumber);
+    if (markingMode === 'list') {
+      onStart(date, pairNumber, 'list');
+    } else {
+      onSummary(date, pairNumber);
+    }
   };
 
   const handleRestart = () => {
@@ -125,7 +140,7 @@ export function MarkSetupScreen({
       return;
     }
     clearPairAttendance(activeGroup.id, date, pairNumber);
-    onStart(date, pairNumber);
+    onStart(date, pairNumber, markingMode);
   };
 
   const handleAllPresent = () => {
@@ -201,6 +216,31 @@ export function MarkSetupScreen({
           </button>
         }
       />
+
+      <section className="mark-mode-bar">
+        <div className="mark-mode-bar-head">
+          <span className="field-label">Способ отметки</span>
+          <span className="muted">запомним</span>
+        </div>
+        <div className="mark-mode-switch" role="group" aria-label="Способ отметки">
+          <button
+            type="button"
+            className={`mark-mode-option${markingMode === 'single' ? ' is-active' : ''}`}
+            onClick={() => changeMarkingMode('single')}
+            aria-pressed={markingMode === 'single'}
+          >
+            По одному
+          </button>
+          <button
+            type="button"
+            className={`mark-mode-option${markingMode === 'list' ? ' is-active' : ''}`}
+            onClick={() => changeMarkingMode('list')}
+            aria-pressed={markingMode === 'list'}
+          >
+            Списком
+          </button>
+        </div>
+      </section>
 
       <section className="card form-stack">
         <label className="field">
@@ -307,13 +347,19 @@ export function MarkSetupScreen({
               className={`btn btn-block ${
                 markedCount === 0 && previousPair ? 'btn-secondary' : 'btn-primary btn-lg'
               }`}
-              onClick={() => onStart(date, pairNumber)}
+              onClick={() => onStart(date, pairNumber, markingMode)}
             >
               {markedCount > 0
-                ? 'Продолжить с первого неотмеченного'
+                ? markingMode === 'list'
+                  ? 'Продолжить списком'
+                  : 'Продолжить с первого неотмеченного'
                 : previousPair
-                  ? 'Отметить по одному'
-                  : 'Начать отметку'}
+                  ? markingMode === 'list'
+                    ? 'Отметить списком'
+                    : 'Отметить по одному'
+                  : markingMode === 'list'
+                    ? 'Открыть список'
+                    : 'Начать отметку'}
               <Icon name="chevron-right" />
             </button>
           )}
@@ -336,7 +382,8 @@ export function MarkSetupScreen({
         <Icon name="info" size={18} />
         <span>
           Отметки сохраняются сразу. Позже их можно изменить в календаре или отчёте.
-          Для опоздавших укажите, на какую пару они пришли.
+          Для опоздавших укажите, на какую пару они пришли. Выбранный способ отметки
+          запоминается для следующих занятий.
         </span>
       </div>
     </div>

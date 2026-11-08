@@ -185,6 +185,7 @@ function normalizeSettings(input: unknown, groups: Group[]): Settings {
     theme: isThemeId(source.theme) ? source.theme : DEFAULT_THEME,
     updateUrl,
     autoUpdateCheck: source.autoUpdateCheck !== false,
+    markingMode: source.markingMode === 'list' ? 'list' : 'single',
   };
 }
 

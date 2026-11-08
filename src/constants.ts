@@ -1,6 +1,6 @@
 import type { Status, ThemeId } from './types';
 
-export const APP_VERSION = '1.4.8';
+export const APP_VERSION = '1.4.9';
 export const DEFAULT_UPDATE_URL = 'https://netlapps.github.io/attendance-app/update.json';
 export const DATA_VERSION = 2;
 export const STORAGE_KEY = 'attendance-app-data-v1';

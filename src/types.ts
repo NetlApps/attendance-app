@@ -2,6 +2,9 @@ export type Status = 'present' | 'absent' | 'sick' | 'excused' | 'late';
 
 export type ThemeId = 'light' | 'dark' | 'ocean' | 'forest' | 'sunset' | 'berry';
 
+/** Способ отметки: по одному студенту или списком. */
+export type MarkingMode = 'single' | 'list';
+
 export interface Group {
   id: string;
   name: string;
@@ -55,6 +58,8 @@ export interface Settings {
   updateUrl?: string;
   /** Автоматически проверять обновления при запуске APK. */
   autoUpdateCheck?: boolean;
+  /** Выбранный способ отметки, сохраняется между сессиями. */
+  markingMode?: MarkingMode;
 }
 
 export interface AppData {

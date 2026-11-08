@@ -26,6 +26,7 @@ import { Icon } from './components/Icon';
 import { HomeScreen } from './screens/HomeScreen';
 import { MarkSetupScreen } from './screens/MarkSetupScreen';
 import { MarkScreen } from './screens/MarkScreen';
+import { MarkListScreen } from './screens/MarkListScreen';
 import { MarkSummaryScreen } from './screens/MarkSummaryScreen';
 import { CalendarScreen } from './screens/CalendarScreen';
 import { DayScreen } from './screens/DayScreen';
@@ -51,6 +52,7 @@ type Route =
   | { name: 'home' }
   | { name: 'mark-setup'; date?: string; pair?: number }
   | { name: 'mark'; groupId: string; date: string; pairNumber: number }
+  | { name: 'mark-list'; groupId: string; date: string; pairNumber: number }
   | { name: 'mark-summary'; groupId: string; date: string; pairNumber: number }
   | { name: 'calendar' }
   | { name: 'day'; groupId: string; date: string }
@@ -79,7 +81,12 @@ const tabs: { route: Route; label: string; icon: IconName; match: Route['name'][
 ];
 
 function isMarkRoute(route: Route): boolean {
-  return route.name === 'mark-setup' || route.name === 'mark' || route.name === 'mark-summary';
+  return (
+    route.name === 'mark-setup' ||
+    route.name === 'mark' ||
+    route.name === 'mark-list' ||
+    route.name === 'mark-summary'
+  );
 }
 
 function hapticTick(): void {
@@ -694,8 +701,17 @@ function AppContent() {
         initialDate={route.date}
         initialPair={route.pair}
         onBack={back}
-        onStart={(date, pairNumber) => {
+        onStart={(date, pairNumber, mode) => {
           if (!activeGroup) return;
+          if (mode === 'list') {
+            navigate({
+              name: 'mark-list',
+              groupId: activeGroup.id,
+              date,
+              pairNumber,
+            });
+            return;
+          }
           navigate({
             name: 'mark',
             groupId: activeGroup.id,
@@ -719,6 +735,23 @@ function AppContent() {
   } else if (route.name === 'mark') {
     screen = (
       <MarkScreen
+        groupId={route.groupId}
+        date={route.date}
+        pairNumber={route.pairNumber}
+        onExit={back}
+        onSummary={() =>
+          replace({
+            name: 'mark-summary',
+            groupId: route.groupId,
+            date: route.date,
+            pairNumber: route.pairNumber,
+          })
+        }
+      />
+    );
+  } else if (route.name === 'mark-list') {
+    screen = (
+      <MarkListScreen
         groupId={route.groupId}
         date={route.date}
         pairNumber={route.pairNumber}

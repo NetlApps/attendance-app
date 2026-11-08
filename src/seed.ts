@@ -132,6 +132,7 @@ export function createSeedData(): AppData {
       theme: DEFAULT_THEME,
       updateUrl: DEFAULT_UPDATE_URL,
       autoUpdateCheck: true,
+      markingMode: 'single',
     },
   };
 }
@@ -156,6 +157,7 @@ export function createEmptyData(): AppData {
       theme: DEFAULT_THEME,
       updateUrl: DEFAULT_UPDATE_URL,
       autoUpdateCheck: true,
+      markingMode: 'single',
     },
   };
 }
