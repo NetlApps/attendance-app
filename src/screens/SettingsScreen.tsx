@@ -12,6 +12,10 @@ import {
   parseBackupFile,
 } from '../storage';
 import {
+  buildImportedGroupData,
+  parseGroupShareFile,
+} from '../groupShare';
+import {
   checkForUpdate,
   currentAppVersion,
   downloadUpdate,
@@ -309,6 +313,47 @@ export function SettingsScreen() {
     if (!file) return;
     try {
       const text = await file.text();
+
+      let groupShare: ReturnType<typeof parseGroupShareFile> | null = null;
+      try {
+        const raw = JSON.parse(text) as { format?: unknown } | null;
+        if (raw && raw.format === 'attendance-group-share') {
+          groupShare = parseGroupShareFile(text);
+        }
+      } catch {
+        // Не JSON или повреждённый файл: ниже покажем понятную ошибку.
+      }
+
+      if (groupShare) {
+        const result = buildImportedGroupData(data, groupShare);
+        const studentsLabel = `${result.studentCount} ${plural(
+          result.studentCount,
+          'студент',
+          'студента',
+          'студентов',
+        )}`;
+        const historyLabel = groupShare.includesAttendance
+          ? `, ${result.attendanceCount} ${plural(
+              result.attendanceCount,
+              'отметка',
+              'отметки',
+              'отметок',
+            )}`
+          : ', без истории';
+        if (
+          !window.confirm(
+            `Это файл группы, а не резервная копия.\n\nДобавить группу «${groupShare.group.name}»?\n${studentsLabel}${historyLabel}\n\nТекущие группы и данные не заменяются.`,
+          )
+        ) {
+          return;
+        }
+        replaceData(result.data);
+        notify(
+          `Группа «${groupShare.group.name}» добавлена: ${studentsLabel}${historyLabel}`,
+        );
+        return;
+      }
+
       const next = parseBackupFile(text);
       if (
         !window.confirm(
@@ -1120,7 +1165,7 @@ export function SettingsScreen() {
             onClick={() => importRef.current?.click()}
           >
             <Icon name="upload" />
-            Импорт JSON
+            Импорт файла
           </button>
           <input
             ref={importRef}
@@ -1131,7 +1176,8 @@ export function SettingsScreen() {
           />
         </div>
         <p className="field-hint">
-          Импорт заменит все текущие группы, студентов, отметки и настройки данными из файла.
+          Резервная копия заменит все текущие группы, студентов, отметки и настройки данными из
+          файла. Если выбрать файл группы, он добавится отдельной группой без замены данных.
           Сейчас в приложении отметок: {data.attendance.length}.
         </p>
       </section>
