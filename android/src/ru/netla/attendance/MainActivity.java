@@ -34,12 +34,18 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.Locale;
 
 public class MainActivity extends Activity {
   private static final String TAG = "AttendanceWeb";
@@ -50,6 +56,10 @@ public class MainActivity extends Activity {
   private static final String PREF_NOTIFICATION_ASKED = "notification_asked";
   private static final String PREF_SYSTEM_BG = "system_bar_background";
   private static final String PREF_SYSTEM_DARK = "system_bar_dark";
+  private static final String DATA_FILE = "attendance-data.json";
+  private static final String PREV_FILE = "attendance-data.prev.json";
+  private static final String BACKUP_PREFIX = "attendance-backup-";
+  private static final int MAX_DAILY_BACKUPS = 14;
 
   private WebView webView;
   private ValueCallback<Uri[]> fileChooserCallback;
@@ -296,6 +306,42 @@ public class MainActivity extends Activity {
   }
 
   private class AndroidBridge {
+    /** Сохраняет копию данных в приватном хранилище приложения. */
+    @JavascriptInterface
+    public void saveDataSnapshot(String json) {
+      DataVault.save(getApplicationContext(), json, false);
+    }
+
+    /** Принудительно создаёт снимок данных (кнопка в настройках). */
+    @JavascriptInterface
+    public void backupDataNow(String json) {
+      DataVault.save(getApplicationContext(), json, true);
+    }
+
+    /** Последняя целая копия данных или пустая строка. */
+    @JavascriptInterface
+    public String getDataSnapshot() {
+      return DataVault.readLatest(getApplicationContext());
+    }
+
+    /** Сведения о хранилище копий в формате JSON. */
+    @JavascriptInterface
+    public String getDataVaultInfo() {
+      return DataVault.info(getApplicationContext());
+    }
+
+    /** Список снимков данных в формате JSON. */
+    @JavascriptInterface
+    public String listDataBackups() {
+      return DataVault.listBackups(getApplicationContext());
+    }
+
+    /** Читает снимок данных по имени файла. */
+    @JavascriptInterface
+    public String readDataBackup(String name) {
+      return DataVault.readBackup(getApplicationContext(), name);
+    }
+
     @JavascriptInterface
     public void saveFile(String filename, String mime, String content) {
       saveTextFile(filename, mime, content);

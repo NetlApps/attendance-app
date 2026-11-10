@@ -20,6 +20,7 @@ import type {
 import {
   clearFiredReminders,
   clearStoredData,
+  consumeRecoveryNotice,
   loadData,
   saveData,
 } from './storage';
@@ -114,6 +115,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setToasts((current) => current.filter((toast) => toast.id !== id));
     }, 3800);
   }, []);
+
+  useEffect(() => {
+    const notice = consumeRecoveryNotice();
+    if (notice) notify(notice, 'info');
+  }, [notify]);
 
   const dismissToast = useCallback((id: string) => {
     setToasts((current) => current.filter((toast) => toast.id !== id));
@@ -492,7 +498,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const resetAllData = useCallback(() => {
     clearStoredData();
     clearFiredReminders();
-    setData(createEmptyData());
+    const empty = createEmptyData();
+    saveData(empty);
+    setData(empty);
   }, []);
 
   const requestNotifications = useCallback(async () => {

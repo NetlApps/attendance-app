@@ -55,6 +55,18 @@ declare global {
     testNotificationNow?: () => boolean;
     /** Показывает проверочное уведомление через указанное число секунд. */
     testNotificationDelayed?: (seconds: number) => void;
+    /** Сохраняет копию данных в приватном хранилище приложения. */
+    saveDataSnapshot?: (json: string) => void;
+    /** Принудительно создаёт снимок данных. */
+    backupDataNow?: (json: string) => void;
+    /** Возвращает последнюю цельную копию данных или пустую строку. */
+    getDataSnapshot?: () => string;
+    /** Сведения о хранилище копий в формате JSON. */
+    getDataVaultInfo?: () => string;
+    /** Список снимков данных в формате JSON. */
+    listDataBackups?: () => string;
+    /** Читает снимок данных по имени файла. */
+    readDataBackup?: (name: string) => string;
   }
 
   interface Window {

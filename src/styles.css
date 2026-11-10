@@ -3137,6 +3137,69 @@ button.report-cell:active {
   flex: 1 1 160px;
 }
 
+.device-backups {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--border);
+}
+
+.device-backups-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.device-backups-head > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.device-backups-head strong {
+  font-size: 15px;
+}
+
+.device-backups-head .muted {
+  font-size: 13px;
+}
+
+.device-backup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.device-backup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.device-backup-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.device-backup-meta strong {
+  font-weight: 600;
+}
+
+.device-backup-meta .muted {
+  font-size: 12px;
+}
+
 /* ---------- Настройки OTA ---------- */
 
 .update-current {

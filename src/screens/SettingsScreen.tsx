@@ -9,7 +9,14 @@ import {
 import type { ReminderSettings, ScheduleItem, ThemeId } from '../types';
 import {
   exportBackupFile,
+  getNativeVaultInfo,
+  hasNativeVault,
+  listNativeBackups,
   parseBackupFile,
+  readNativeBackup,
+  saveNativeBackupNow,
+  type NativeBackupEntry,
+  type NativeVaultInfo,
 } from '../storage';
 import {
   buildImportedGroupData,
@@ -69,6 +76,15 @@ function addMinutesToTime(time: string, delta: number): string {
   return `${pad2(Math.floor(total / 60))}:${pad2(total % 60)}`;
 }
 
+function formatBackupStamp(timestamp: number): string {
+  if (!timestamp) return '—';
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '—';
+  return `${pad2(date.getDate())}.${pad2(date.getMonth() + 1)}.${date.getFullYear()}, ${pad2(
+    date.getHours(),
+  )}:${pad2(date.getMinutes())}`;
+}
+
 export function SettingsScreen() {
   const {
     data,
@@ -100,6 +116,18 @@ export function SettingsScreen() {
     () => data.settings.autoUpdateCheck !== false,
   );
   const [appVersion, setAppVersion] = useState(() => currentAppVersion());
+  const [vaultInfo, setVaultInfo] = useState<NativeVaultInfo | null>(() =>
+    getNativeVaultInfo(),
+  );
+  const [vaultBackups, setVaultBackups] = useState<NativeBackupEntry[]>(() =>
+    listNativeBackups(),
+  );
+  const [showAllBackups, setShowAllBackups] = useState(false);
+
+  const refreshVault = () => {
+    setVaultInfo(getNativeVaultInfo());
+    setVaultBackups(listNativeBackups());
+  };
 
   useEffect(() => {
     setReminders({
@@ -305,6 +333,49 @@ export function SettingsScreen() {
       exportBackupFile(data),
       'application/json;charset=utf-8',
     );
+  };
+
+  const handleVaultBackupNow = () => {
+    if (!isAndroidApp) {
+      notify('Копии на телефоне доступны только в установленном APK', 'info');
+      return;
+    }
+    if (saveNativeBackupNow(data)) {
+      refreshVault();
+      notify('Копия сохранена на телефоне');
+    } else {
+      notify('Не удалось сохранить копию на телефоне', 'error');
+    }
+  };
+
+  const prepareUpdate = () => {
+    if (isAndroidApp) saveNativeBackupNow(data);
+  };
+
+  const handleVaultRestore = (entry: NativeBackupEntry) => {
+    const text = readNativeBackup(entry.name);
+    if (!text) {
+      notify('Не удалось прочитать копию с телефона', 'error');
+      return;
+    }
+    try {
+      const next = parseBackupFile(text);
+      if (
+        !window.confirm(
+          `Восстановить данные из копии от ${formatBackupStamp(entry.savedAt)}?\n\nГрупп: ${next.groups.length}\nСтудентов: ${next.students.length}\nОтметок: ${next.attendance.length}\n\nТекущие данные будут заменены.`,
+        )
+      ) {
+        return;
+      }
+      replaceData(next);
+      refreshVault();
+      notify('Данные восстановлены из копии на телефоне');
+    } catch (error) {
+      notify(
+        error instanceof Error ? error.message : 'Не удалось восстановить копию.',
+        'error',
+      );
+    }
   };
 
   const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -551,7 +622,10 @@ export function SettingsScreen() {
           <button
             type="button"
             className="btn btn-primary"
-            onClick={() => downloadUpdate(true)}
+            onClick={() => {
+              prepareUpdate();
+              downloadUpdate(true);
+            }}
           >
             <Icon name="download" />
             Скачать и установить
@@ -585,7 +659,14 @@ export function SettingsScreen() {
         </div>
         <p>Файл проверен по SHA-256 и подписи приложения. Подтвердите установку в системе.</p>
         <div className="settings-actions">
-          <button type="button" className="btn btn-primary" onClick={() => installUpdate()}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              prepareUpdate();
+              installUpdate();
+            }}
+          >
             <Icon name="download" />
             Установить
           </button>
@@ -611,7 +692,14 @@ export function SettingsScreen() {
           >
             Разрешить
           </button>
-          <button type="button" className="btn btn-primary" onClick={() => installUpdate()}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              prepareUpdate();
+              installUpdate();
+            }}
+          >
             Установить
           </button>
         </div>
@@ -1151,8 +1239,8 @@ export function SettingsScreen() {
           </h2>
         </div>
         <p className="muted">
-          Все данные хранятся только в этом браузере. Перед очисткой браузера или сменой
-          телефона сохраните копию.
+          Все данные хранятся только на этом устройстве. Перед сменой телефона или очисткой
+          данных сохраните копию.
         </p>
         <div className="settings-actions">
           <button type="button" className="btn btn-secondary" onClick={handleExport}>
@@ -1180,6 +1268,63 @@ export function SettingsScreen() {
           файла. Если выбрать файл группы, он добавится отдельной группой без замены данных.
           Сейчас в приложении отметок: {data.attendance.length}.
         </p>
+        {isAndroidApp && hasNativeVault() ? (
+          <div className="device-backups">
+            <div className="device-backups-head">
+              <div>
+                <strong>Копии на телефоне</strong>
+                <span className="muted">
+                  {vaultInfo?.available && vaultInfo.savedAt
+                    ? `Последняя: ${formatBackupStamp(vaultInfo.savedAt)}`
+                    : 'Пока нет сохранённой копии'}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={handleVaultBackupNow}
+              >
+                <Icon name="download" size={16} />
+                Сохранить
+              </button>
+            </div>
+            <p className="field-hint">
+              Приложение автоматически сохраняет копию при каждом изменении. Если данные
+              приложения пропадут после обновления, они восстановятся из этой копии.
+              {vaultInfo && vaultInfo.backupCount > 0
+                ? ` Снимков: ${vaultInfo.backupCount}.`
+                : ''}
+            </p>
+            {vaultBackups.length > 0 ? (
+              <div className="device-backup-list">
+                {(showAllBackups ? vaultBackups : vaultBackups.slice(0, 5)).map((entry) => (
+                  <div className="device-backup-row" key={entry.name}>
+                    <span className="device-backup-meta">
+                      <strong>{formatBackupStamp(entry.savedAt)}</strong>
+                      <span className="muted">{formatBytes(entry.size)}</span>
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => handleVaultRestore(entry)}
+                    >
+                      Восстановить
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {vaultBackups.length > 5 ? (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setShowAllBackups((value) => !value)}
+              >
+                {showAllBackups ? 'Свернуть' : `Показать все (${vaultBackups.length})`}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </section>
 
       <section className="card">
@@ -1190,8 +1335,9 @@ export function SettingsScreen() {
           </h2>
         </div>
         <p className="muted">
-          Полностью удаляет группы, студентов, историю и настройки. Сначала сделайте резервную
-          копию.
+          Полностью удаляет группы, студентов, историю и настройки из приложения. Автоматические
+          копии на телефоне остаются в разделе «Резервная копия» — из них можно восстановить
+          данные. Сначала сделайте резервную копию.
         </p>
         <button type="button" className="btn btn-danger-ghost btn-block" onClick={handleClear}>
           <Icon name="trash" />

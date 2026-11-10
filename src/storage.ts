@@ -34,6 +34,65 @@ import {
   uid,
 } from './utils';
 
+const RECOVERY_NOTICE_KEY = 'attendance-app:recovery-notice';
+
+export interface NativeVaultInfo {
+  available: boolean;
+  savedAt: number;
+  size: number;
+  groups: number;
+  students: number;
+  attendance: number;
+  backupCount: number;
+  previousSavedAt: number;
+}
+
+export interface NativeBackupEntry {
+  name: string;
+  savedAt: number;
+  size: number;
+}
+
+let pendingRecoveryNotice: string | null = null;
+
+function androidBridge(): AndroidAppBridge | undefined {
+  return typeof window !== 'undefined' ? window.AndroidApp : undefined;
+}
+
+function readNativeSnapshot(): string {
+  try {
+    const text = androidBridge()?.getDataSnapshot?.();
+    return typeof text === 'string' ? text : '';
+  } catch (error) {
+    console.error('Не удалось прочитать копию данных с телефона:', error);
+    return '';
+  }
+}
+
+function rememberRecovery(): void {
+  const message =
+    'Данные восстановлены из сохранённой копии на телефоне. Проверьте группы и отметки.';
+  pendingRecoveryNotice = message;
+  try {
+    localStorage.setItem(RECOVERY_NOTICE_KEY, message);
+  } catch {
+    // Если localStorage недоступен, сообщение покажем из памяти.
+  }
+}
+
+/** Возвращает сообщение о восстановлении после потери localStorage, один раз. */
+export function consumeRecoveryNotice(): string | null {
+  let message = pendingRecoveryNotice;
+  pendingRecoveryNotice = null;
+  try {
+    if (!message) message = localStorage.getItem(RECOVERY_NOTICE_KEY);
+    localStorage.removeItem(RECOVERY_NOTICE_KEY);
+  } catch {
+    // Если localStorage недоступен, остаётся сообщение из памяти.
+  }
+  return message;
+}
+
 function asString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -306,44 +365,159 @@ export function normalizeData(input: unknown): AppData {
 }
 
 export function loadData(): AppData {
+  let raw: string | null = null;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return createSeedData();
-    const parsed = JSON.parse(raw) as unknown;
-    const data = normalizeData(parsed);
-    const storedVersion =
-      parsed && typeof parsed === 'object'
-        ? Number((parsed as { version?: unknown }).version)
-        : Number.NaN;
-    const storedUpdateUrl =
-      parsed && typeof parsed === 'object'
-        ? (parsed as { settings?: { updateUrl?: unknown } }).settings?.updateUrl
-        : undefined;
-    const needsSettingsMigration =
-      typeof storedUpdateUrl === 'string' && storedUpdateUrl !== data.settings.updateUrl;
-    if (
-      !Number.isFinite(storedVersion) ||
-      storedVersion !== DATA_VERSION ||
-      needsSettingsMigration
-    ) {
-      saveData(data);
-    }
-    return data;
+    raw = localStorage.getItem(STORAGE_KEY);
   } catch (error) {
-    console.error('Не удалось загрузить сохранённые данные:', error);
-    return createSeedData();
+    console.error('Не удалось прочитать сохранённые данные:', error);
   }
+
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      const data = normalizeData(parsed);
+      const storedVersion =
+        parsed && typeof parsed === 'object'
+          ? Number((parsed as { version?: unknown }).version)
+          : Number.NaN;
+      const storedUpdateUrl =
+        parsed && typeof parsed === 'object'
+          ? (parsed as { settings?: { updateUrl?: unknown } }).settings?.updateUrl
+          : undefined;
+      const needsSettingsMigration =
+        typeof storedUpdateUrl === 'string' && storedUpdateUrl !== data.settings.updateUrl;
+      if (
+        !Number.isFinite(storedVersion) ||
+        storedVersion !== DATA_VERSION ||
+        needsSettingsMigration
+      ) {
+        saveData(data);
+      }
+      return data;
+    } catch (error) {
+      console.error('Не удалось загрузить сохранённые данные:', error);
+    }
+  }
+
+  // localStorage пуст или повреждён — восстанавливаем копию из приватного хранилища.
+  const nativeRaw = readNativeSnapshot();
+  if (nativeRaw) {
+    try {
+      const parsed = JSON.parse(nativeRaw) as unknown;
+      const data = normalizeData(parsed);
+      saveData(data);
+      rememberRecovery();
+      return data;
+    } catch (error) {
+      console.error('Не удалось восстановить данные из копии на телефоне:', error);
+    }
+  }
+
+  return createSeedData();
 }
 
 export function saveData(data: AppData): boolean {
+  const json = JSON.stringify(data);
+  let localOk = false;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    return true;
+    localStorage.setItem(STORAGE_KEY, json);
+    localOk = true;
   } catch (error) {
     console.error('Не удалось сохранить данные:', error);
+  }
+
+  let nativeOk = false;
+  const bridge = androidBridge();
+  if (bridge?.saveDataSnapshot) {
+    try {
+      bridge.saveDataSnapshot(json);
+      nativeOk = true;
+    } catch (error) {
+      console.error('Не удалось сохранить копию на телефоне:', error);
+    }
+  }
+
+  return localOk || nativeOk;
+}
+
+/** Есть ли на телефоне приватное хранилище копий. */
+export function hasNativeVault(): boolean {
+  return Boolean(androidBridge()?.saveDataSnapshot);
+}
+
+/** Сведения о последней копии и количестве снимков. */
+export function getNativeVaultInfo(): NativeVaultInfo | null {
+  try {
+    const raw = androidBridge()?.getDataVaultInfo?.();
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<NativeVaultInfo>;
+    if (typeof parsed !== 'object' || parsed === null) return null;
+    return {
+      available: Boolean(parsed.available),
+      savedAt: Number(parsed.savedAt) || 0,
+      size: Number(parsed.size) || 0,
+      groups: Number(parsed.groups) || 0,
+      students: Number(parsed.students) || 0,
+      attendance: Number(parsed.attendance) || 0,
+      backupCount: Number(parsed.backupCount) || 0,
+      previousSavedAt: Number(parsed.previousSavedAt) || 0,
+    };
+  } catch (error) {
+    console.error('Не удалось прочитать сведения о копиях на телефоне:', error);
+    return null;
+  }
+}
+
+/** Список снимков данных на телефоне, новые сначала. */
+export function listNativeBackups(): NativeBackupEntry[] {
+  try {
+    const raw = androidBridge()?.listDataBackups?.();
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (item): item is NativeBackupEntry =>
+          Boolean(item) &&
+          typeof item === 'object' &&
+          typeof (item as NativeBackupEntry).name === 'string' &&
+          Number.isFinite(Number((item as NativeBackupEntry).savedAt)),
+      )
+      .map((item) => ({
+        name: item.name,
+        savedAt: Number(item.savedAt) || 0,
+        size: Number(item.size) || 0,
+      }));
+  } catch (error) {
+    console.error('Не удалось прочитать список копий на телефоне:', error);
+    return [];
+  }
+}
+
+/** Читает снимок данных по имени файла. */
+export function readNativeBackup(name: string): string {
+  try {
+    const text = androidBridge()?.readDataBackup?.(name);
+    return typeof text === 'string' ? text : '';
+  } catch (error) {
+    console.error('Не удалось прочитать копию с телефона:', error);
+    return '';
+  }
+}
+
+/** Принудительно сохраняет снимок данных на телефоне. */
+export function saveNativeBackupNow(data: AppData): boolean {
+  const bridge = androidBridge();
+  if (!bridge?.backupDataNow) return false;
+  try {
+    bridge.backupDataNow(JSON.stringify(data));
+    return true;
+  } catch (error) {
+    console.error('Не удалось сохранить копию на телефоне:', error);
     return false;
   }
 }
+
 
 export function exportBackupFile(data: AppData): string {
   return JSON.stringify(
@@ -367,8 +541,10 @@ export function parseBackupFile(text: string): AppData {
 }
 
 export function clearStoredData(): void {
+  pendingRecoveryNotice = null;
   try {
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(RECOVERY_NOTICE_KEY);
   } catch (error) {
     console.error('Не удалось очистить данные:', error);
   }

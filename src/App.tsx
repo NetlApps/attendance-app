@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { flushSync } from 'react-dom';
 import { useApp } from './store';
+import { saveNativeBackupNow } from './storage';
 import { runTopBackHandler } from './backHandler';
 import { nextPairNumber, todayISO } from './utils';
 import { useReminders } from './useReminders';
@@ -440,6 +441,11 @@ function UpdateBanner({
   state: OtaState;
   onDismiss: () => void;
 }) {
+  const { data } = useApp();
+  const prepareUpdate = () => {
+    if (isAndroidApp()) saveNativeBackupNow(data);
+  };
+
   if (
     state.state !== 'available' &&
     state.state !== 'downloading' &&
@@ -461,7 +467,10 @@ function UpdateBanner({
   let title = `Доступно обновление${version}`;
   let detail = [size, firstNote].filter(Boolean).join(' · ');
   let actionLabel = 'Обновить';
-  let action: (() => void) | null = () => downloadUpdate(true);
+  let action: (() => void) | null = () => {
+    prepareUpdate();
+    downloadUpdate(true);
+  };
   let disabled = false;
 
   if (state.state === 'downloading') {
@@ -474,7 +483,10 @@ function UpdateBanner({
     title = `Обновление${version} готово`;
     detail = 'Файл проверен по SHA-256 и подписи. Осталось подтвердить установку.';
     actionLabel = 'Установить';
-    action = () => installUpdate();
+    action = () => {
+      prepareUpdate();
+      installUpdate();
+    };
   } else if (state.state === 'need_permission') {
     title = 'Нужно разрешение на установку';
     detail = 'Разрешите приложению устанавливать обновления, затем нажмите «Установить».';
