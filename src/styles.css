@@ -2790,6 +2790,66 @@ button.report-cell:active {
   font-size: 13.5px;
 }
 
+.group-share-btn {
+  margin-top: 8px;
+}
+
+.share-option {
+  width: 100%;
+  min-height: 64px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.share-option:hover:not(:disabled) {
+  border-color: var(--accent-tint-strong);
+  background: var(--accent-tint);
+}
+
+.share-option-icon {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.share-option-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.share-option-text strong {
+  font-size: 13px;
+}
+
+.share-option-text small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.share-option > svg {
+  flex: none;
+  color: var(--muted-2);
+}
+
 /* ---------- Настройки ---------- */
 
 .settings-screen {

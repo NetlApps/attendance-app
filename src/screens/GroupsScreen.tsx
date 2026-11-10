@@ -1,7 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import type { Group } from '../types';
 import { useApp } from '../store';
-import { plural } from '../utils';
+import { plural, shareTextFile } from '../utils';
+import {
+  buildImportedGroupData,
+  createGroupShareFile,
+  groupShareFileName,
+  parseGroupShareFile,
+  serializeGroupShare,
+} from '../groupShare';
 import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
 import { Modal } from '../components/Modal';
@@ -21,11 +28,16 @@ export function GroupsScreen({ onBack, onSelected, onStudents }: GroupsScreenPro
     addGroup,
     updateGroup,
     deleteGroup,
+    replaceData,
     notify,
   } = useApp();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Group | null>(null);
   const [deleting, setDeleting] = useState<Group | null>(null);
+  const [shareGroup, setShareGroup] = useState<Group | null>(null);
+  const [sharing, setSharing] = useState<'students' | 'full' | null>(null);
+  const [importing, setImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const openCreate = () => {
     setEditing(null);
@@ -52,8 +64,79 @@ export function GroupsScreen({ onBack, onSelected, onStudents }: GroupsScreenPro
     setDeleting(null);
   };
 
+  const handleImportClick = () => {
+    if (importing) return;
+    importInputRef.current?.click();
+  };
+
+  const handleImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) {
+      notify('Файл слишком большой для импорта группы', 'error');
+      return;
+    }
+    setImporting(true);
+    try {
+      const parsed = parseGroupShareFile(await file.text());
+      const result = buildImportedGroupData(data, parsed);
+      replaceData(result.data);
+      const studentsLabel = `${result.studentCount} ${plural(
+        result.studentCount,
+        'студент',
+        'студента',
+        'студентов',
+      )}`;
+      const historyLabel = parsed.includesAttendance
+        ? `, ${result.attendanceCount} ${plural(
+            result.attendanceCount,
+            'отметка',
+            'отметки',
+            'отметок',
+          )}`
+        : ', без истории';
+      notify(`Группа «${parsed.group.name}» добавлена: ${studentsLabel}${historyLabel}`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Не удалось импортировать группу', 'error');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleShare = async (includeAttendance: boolean) => {
+    if (!shareGroup || sharing) return;
+    setSharing(includeAttendance ? 'full' : 'students');
+    try {
+      const file = createGroupShareFile(data, shareGroup.id, includeAttendance);
+      const content = serializeGroupShare(file);
+      const filename = groupShareFileName(shareGroup.name, includeAttendance);
+      const result = await shareTextFile(
+        filename,
+        content,
+        'application/json',
+        `Группа ${shareGroup.name}`,
+      );
+      setShareGroup(null);
+      if (result === 'cancelled') {
+        notify('Отправка файла отменена', 'info');
+      } else if (result === 'downloaded') {
+        notify('Файл группы сохранён в «Загрузки»');
+      } else {
+        notify('Файл группы отправлен');
+      }
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Не удалось подготовить файл', 'error');
+    } finally {
+      setSharing(null);
+    }
+  };
+
   const studentCount = (groupId: string) =>
     data.students.filter((student) => student.groupId === groupId && !student.archived).length;
+
+  const attendanceCount = (groupId: string) =>
+    data.attendance.filter((record) => record.groupId === groupId).length;
 
   return (
     <div className="screen">
@@ -62,10 +145,30 @@ export function GroupsScreen({ onBack, onSelected, onStudents }: GroupsScreenPro
         subtitle="Каждая группа хранит своих студентов и историю"
         onBack={onBack}
         actions={
-          <button type="button" className="icon-button" onClick={openCreate} aria-label="Создать группу">
-            <Icon name="plus" />
-          </button>
+          <>
+            <button
+              type="button"
+              className="icon-button"
+              onClick={handleImportClick}
+              disabled={importing}
+              aria-label="Импортировать группу"
+              title="Импортировать группу из файла"
+            >
+              <Icon name="upload" />
+            </button>
+            <button type="button" className="icon-button" onClick={openCreate} aria-label="Создать группу">
+              <Icon name="plus" />
+            </button>
+          </>
         }
+      />
+
+      <input
+        ref={importInputRef}
+        type="file"
+        accept=".json,application/json"
+        onChange={handleImportFile}
+        hidden
       />
 
       <div className="groups-list">
@@ -135,6 +238,15 @@ export function GroupsScreen({ onBack, onSelected, onStudents }: GroupsScreenPro
                   <Icon name="trash" size={18} />
                 </button>
               </div>
+
+              <button
+                type="button"
+                className="btn btn-secondary btn-block group-share-btn"
+                onClick={() => setShareGroup(group)}
+              >
+                <Icon name="share" size={18} />
+                Поделиться группой
+              </button>
             </section>
           );
         })}
@@ -210,6 +322,75 @@ export function GroupsScreen({ onBack, onSelected, onStudents }: GroupsScreenPro
             В группе сейчас {studentCount(deleting.id)}{' '}
             {plural(studentCount(deleting.id), 'студент', 'студента', 'студентов')}.
           </p>
+        )}
+      </Modal>
+
+      <Modal
+        open={Boolean(shareGroup)}
+        onClose={() => {
+          if (!sharing) setShareGroup(null);
+        }}
+        title="Поделиться группой"
+        subtitle={shareGroup?.name}
+        footer={
+          <div className="modal-footer-row">
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setShareGroup(null)}
+              disabled={Boolean(sharing)}
+            >
+              Отмена
+            </button>
+          </div>
+        }
+      >
+        {shareGroup && (
+          <div className="form-stack">
+            <p className="muted">
+              Получатель откроет файл в приложении через «Группы → Импортировать группу».
+              Его текущие группы и данные не пострадают.
+            </p>
+            <button
+              type="button"
+              className="share-option"
+              onClick={() => handleShare(false)}
+              disabled={Boolean(sharing)}
+            >
+              <span className="share-option-icon">
+                <Icon name="users" size={20} />
+              </span>
+              <span className="share-option-text">
+                <strong>Только список студентов</strong>
+                <small>
+                  {studentCount(shareGroup.id)}{' '}
+                  {plural(studentCount(shareGroup.id), 'студент', 'студента', 'студентов')}
+                </small>
+              </span>
+              <Icon name="chevron-right" size={18} />
+            </button>
+            <button
+              type="button"
+              className="share-option"
+              onClick={() => handleShare(true)}
+              disabled={Boolean(sharing)}
+            >
+              <span className="share-option-icon">
+                <Icon name="calendar" size={20} />
+              </span>
+              <span className="share-option-text">
+                <strong>Список + история посещаемости</strong>
+                <small>
+                  {studentCount(shareGroup.id)}{' '}
+                  {plural(studentCount(shareGroup.id), 'студент', 'студента', 'студентов')} ·{' '}
+                  {attendanceCount(shareGroup.id)}{' '}
+                  {plural(attendanceCount(shareGroup.id), 'отметка', 'отметки', 'отметок')}
+                </small>
+              </span>
+              <Icon name="chevron-right" size={18} />
+            </button>
+            {sharing && <p className="field-hint">Готовим файл…</p>}
+          </div>
         )}
       </Modal>
     </div>
