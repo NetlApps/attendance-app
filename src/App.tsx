@@ -541,11 +541,12 @@ function AppContent() {
   }, []);
 
   /**
-   * Плавный переход: новый экран раскрывается кругом из точки нажатия.
+   * Плавный переход в духе UniStore: новый экран проявляется и мягко
+   * вырастает из точки нажатия, старый — слегка уменьшается и растворяется.
    * Если View Transitions недоступны или включено уменьшение движения,
    * экран меняется сразу.
    */
-  const runTransition = (update: () => void) => {
+  const runTransition = (update: () => void, direction: 'forward' | 'back' = 'forward') => {
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const startViewTransition = (
       document as Document & {
@@ -571,16 +572,12 @@ function AppContent() {
       }
     }
 
-    const radius = Math.ceil(
-      Math.hypot(
-        Math.max(x, window.innerWidth - x),
-        Math.max(y, window.innerHeight - y),
-      ),
-    );
     const root = document.documentElement;
     root.style.setProperty('--vt-x', `${x}px`);
     root.style.setProperty('--vt-y', `${y}px`);
-    root.style.setProperty('--vt-radius', `${radius}px`);
+    root.style.setProperty('--vt-in-scale', direction === 'back' ? '0.86' : '0.82');
+    root.style.setProperty('--vt-out-scale', direction === 'back' ? '0.92' : '0.97');
+    root.dataset.vtDirection = direction;
 
     const transition = startViewTransition.call(document, () => {
       flushSync(update);
@@ -588,7 +585,9 @@ function AppContent() {
     transition.finished.finally(() => {
       root.style.removeProperty('--vt-x');
       root.style.removeProperty('--vt-y');
-      root.style.removeProperty('--vt-radius');
+      root.style.removeProperty('--vt-in-scale');
+      root.style.removeProperty('--vt-out-scale');
+      delete root.dataset.vtDirection;
     });
   };
 
@@ -663,14 +662,14 @@ function AppContent() {
 
   const back = () => {
     if (stack.length === 0) {
-      runTransition(() => setRoute({ name: 'home' }));
+      runTransition(() => setRoute({ name: 'home' }), 'back');
       return;
     }
     const previous = stack[stack.length - 1];
     runTransition(() => {
       setRoute(previous);
       setStack(stack.slice(0, -1));
-    });
+    }, 'back');
   };
 
   useEffect(() => {
