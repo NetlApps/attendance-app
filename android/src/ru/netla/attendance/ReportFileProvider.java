@@ -11,6 +11,7 @@ import android.provider.OpenableColumns;
 
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.util.Locale;
 
 /** Отдаёт файл отчёта приложениям, выбранным в системном диалоге «Поделиться». */
 public class ReportFileProvider extends ContentProvider {
@@ -68,6 +69,11 @@ public class ReportFileProvider extends ContentProvider {
 
   @Override
   public String getType(Uri uri) {
+    File file = fileFor(uri);
+    String name = file == null ? "" : file.getName().toLowerCase(Locale.US);
+    if (name.endsWith(".html") || name.endsWith(".htm")) return "text/html";
+    if (name.endsWith(".json")) return "application/json";
+    if (name.endsWith(".txt")) return "text/plain";
     return "text/csv";
   }
 

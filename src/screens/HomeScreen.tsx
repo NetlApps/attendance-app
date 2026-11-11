@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { STATUS_META, STATUS_ORDER } from '../constants';
 import { useApp } from '../store';
-import { buildReportCsv, reportFileName } from '../reportCsv';
+import { buildReportHtml, reportHtmlFileName } from '../reportHtml';
 import {
   comparePairNumbers,
   currentPairNumber,
@@ -101,15 +101,15 @@ export function HomeScreen({
       const periodLabel = period === 'today' ? formatDate(today) : monthLabel(month);
       const periodKey = period === 'today' ? today : month;
       const result = await shareTextFile(
-        reportFileName(activeGroup.name, periodKey),
-        buildReportCsv({
+        reportHtmlFileName(activeGroup.name, periodKey),
+        buildReportHtml({
           group: activeGroup,
           students: data.students,
           records,
           periodLabel,
           periodCaption: period === 'today' ? 'Дата' : 'Месяц',
         }),
-        'text/csv;charset=utf-8',
+        'text/html',
         `Отчёт за ${periodLabel}`,
       );
       if (result === 'downloaded') {
@@ -263,8 +263,9 @@ export function HomeScreen({
             </h2>
           </div>
           <p className="muted share-hint">
-            CSV-файл для мессенджера, почты или «Загрузок»: все отмеченные занятия,
-            пропуски и проценты.
+            Красивый HTML-отчёт для мессенджера: по каждому студенту видно, что было на
+            каждой паре. Открывается в браузере, можно распечатать. Для Excel есть
+            «Отчёты → CSV для Excel».
           </p>
           <div className="share-actions">
             <button

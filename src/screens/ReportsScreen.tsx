@@ -9,6 +9,7 @@ import {
   formatDateShort,
   formatPercent,
   monthLabel,
+  shareTextFile,
   slotName,
   slotShortName,
   statusCounts,
@@ -16,6 +17,7 @@ import {
   weekdayShort,
 } from '../utils';
 import { buildReportCsv, reportFileName } from '../reportCsv';
+import { buildReportHtml, reportHtmlFileName } from '../reportHtml';
 import { AttendanceEditModal } from '../components/AttendanceEditModal';
 import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
@@ -164,6 +166,32 @@ export function ReportsScreen({ onMark, onGroups }: ReportsScreenProps) {
     );
   };
 
+  const handleShareHtml = async () => {
+    if (!group || monthRecords.length === 0) {
+      notify('За выбранный месяц пока нет данных для отчёта.', 'info');
+      return;
+    }
+    try {
+      const result = await shareTextFile(
+        reportHtmlFileName(group.name, month),
+        buildReportHtml({
+          group,
+          students: data.students,
+          records: monthRecords,
+          periodLabel: monthLabel(month),
+          periodCaption: 'Месяц',
+        }),
+        'text/html',
+        `Отчёт за ${monthLabel(month)}`,
+      );
+      if (result === 'downloaded') {
+        notify('Файл сохранён в «Загрузки».', 'success');
+      }
+    } catch {
+      notify('Не удалось отправить отчёт. Попробуйте ещё раз.', 'error');
+    }
+  };
+
   if (!group) {
     return (
       <div className="screen">
@@ -224,6 +252,15 @@ export function ReportsScreen({ onMark, onGroups }: ReportsScreenProps) {
           <button
             type="button"
             className="btn btn-primary"
+            onClick={handleShareHtml}
+            disabled={monthRecords.length === 0}
+          >
+            <Icon name="share" />
+            Красивый отчёт
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
             onClick={handleExport}
             disabled={monthRecords.length === 0}
           >
@@ -243,6 +280,10 @@ export function ReportsScreen({ onMark, onGroups }: ReportsScreenProps) {
             Печать / PDF
           </button>
         </div>
+        <p className="field-hint">
+          «Красивый отчёт» — HTML-файл с карточками студентов: по каждой паре
+          написано «Есть», «Не было», «Болеет» и т.п. CSV — простая таблица для Excel.
+        </p>
       </section>
 
       <div className="print-only report-print-head">

@@ -1,23 +1,14 @@
-import { STATUS_META } from './constants';
-import type { Attendance, Group, Student } from './types';
+import { STATUS_META, STATUS_ORDER } from './constants';
+import { buildReportData, type ReportDataOptions } from './reportData';
 import {
-  comparePairNumbers,
   csvLine,
   formatDate,
-  formatPercent,
   safeFilePart,
   slotName,
-  statusCounts,
   todayISO,
-  weekdayShort,
 } from './utils';
 
-export interface ReportCsvOptions {
-  group: Group;
-  /** Все студенты приложения: функция сама оставит нужную группу. */
-  students: Student[];
-  /** Отметки только за выбранный период и только этой группы. */
-  records: Attendance[];
+export interface ReportCsvOptions extends ReportDataOptions {
   periodLabel: string;
   periodCaption?: string;
 }
@@ -28,8 +19,8 @@ export function reportFileName(groupName: string, periodKey: string): string {
 }
 
 /**
- * Собирает CSV в том же «бумажном» формате, что и месячная ведомость:
- * строки — студенты, колонки — отмеченные дни и занятия.
+ * Простой CSV для Excel: одна строка — студент и дата, дальше пары
+ * со словами «Есть», «Не было», «Болеет» и т.п. Без широкой матрицы.
  */
 export function buildReportCsv({
   group,
@@ -38,42 +29,11 @@ export function buildReportCsv({
   periodLabel,
   periodCaption = 'Период',
 }: ReportCsvOptions): string {
-  const sortedRecords = [...records].sort(
-    (a, b) =>
-      a.date.localeCompare(b.date) ||
-      comparePairNumbers(a.pairNumber, b.pairNumber),
-  );
-
-  const columns: { key: string; date: string; pairNumber: number }[] = [];
-  const seenColumns = new Set<string>();
-  for (const record of sortedRecords) {
-    const key = `${record.date}|${record.pairNumber}`;
-    if (seenColumns.has(key)) continue;
-    seenColumns.add(key);
-    columns.push({ key, date: record.date, pairNumber: record.pairNumber });
-  }
-
-  const recordLookup = new Map<string, Attendance>();
-  const recordsByStudent = new Map<string, Attendance[]>();
-  for (const record of sortedRecords) {
-    recordLookup.set(
-      `${record.studentId}|${record.date}|${record.pairNumber}`,
-      record,
-    );
-    const list = recordsByStudent.get(record.studentId) ?? [];
-    list.push(record);
-    recordsByStudent.set(record.studentId, list);
-  }
-
-  const groupStudents = students
-    .filter((student) => student.groupId === group.id)
-    .sort((a, b) => a.order - b.order || a.fullName.localeCompare(b.fullName, 'ru'));
-  const relevant = groupStudents.filter(
-    (student) => !student.archived || (recordsByStudent.get(student.id)?.length ?? 0) > 0,
-  );
+  const data = buildReportData({ group, students, records });
+  const pairColumns = data.pairNumbers.map((pairNumber) => slotName(pairNumber));
 
   const lines: string[] = [];
-  lines.push(csvLine(['Ведомость посещаемости студентов']));
+  lines.push(csvLine(['Отчёт о посещаемости']));
   lines.push(csvLine(['Группа', group.name]));
   lines.push(csvLine([periodCaption, periodLabel]));
   lines.push(csvLine(['Сформировано', formatDate(todayISO())]));
@@ -82,57 +42,77 @@ export function buildReportCsv({
     csvLine([
       '№',
       'ФИО',
-      ...columns.map(
-        (column) =>
-          `${formatDate(column.date)} (${weekdayShort(column.date)}), ${slotName(column.pairNumber)}`,
-      ),
-      'Всего отмечено',
-      'Есть',
-      'Не было',
-      'Болеет',
-      'Уважительная',
-      'Опоздал',
-      '% посещаемости',
+      'Дата',
+      ...pairColumns,
+      'Посещено',
+      'Пропущено',
+      '%',
+      'Комментарии',
     ]),
   );
 
-  let displayNumber = 0;
-  for (const student of relevant) {
-    const studentRecords = recordsByStudent.get(student.id) ?? [];
-    const counts = statusCounts(studentRecords);
-    const visited = counts.present + counts.late;
-    if (!student.archived) displayNumber += 1;
-    const cells = columns.map((column) => {
-      const record = recordLookup.get(
-        `${student.id}|${column.date}|${column.pairNumber}`,
+  for (const entry of data.entries) {
+    const name = entry.student.fullName;
+    const number = entry.student.archived ? 'арх.' : String(entry.number ?? '');
+
+    if (entry.days.length === 0) {
+      lines.push(
+        csvLine([
+          number,
+          name,
+          '—',
+          ...pairColumns.map(() => '—'),
+          0,
+          0,
+          '—',
+          'нет отметок за период',
+        ]),
       );
-      return record ? STATUS_META[record.status].symbol : '—';
-    });
-    lines.push(
-      csvLine([
-        student.archived ? 'арх.' : displayNumber,
-        student.fullName,
-        ...cells,
-        studentRecords.length,
-        counts.present,
-        counts.absent,
-        counts.sick,
-        counts.excused,
-        counts.late,
-        formatPercent(visited, studentRecords.length),
-      ]),
-    );
+      continue;
+    }
+
+    for (const day of entry.days) {
+      const byPair = new Map(day.records.map((record) => [record.pairNumber, record]));
+      const cells = data.pairNumbers.map((pairNumber) => {
+        const record = byPair.get(pairNumber);
+        return record ? STATUS_META[record.status].label : '—';
+      });
+      const visited = day.records.filter(
+        (record) => record.status === 'present' || record.status === 'late',
+      ).length;
+      const missed = day.records.length - visited;
+      const percent =
+        day.records.length > 0
+          ? `${Math.round((visited / day.records.length) * 100)}%`
+          : '—';
+      const comments = day.records
+        .filter((record) => record.comment?.trim())
+        .map((record) => `${slotName(record.pairNumber)}: ${record.comment!.trim()}`)
+        .join('; ');
+      const notes = [entry.student.archived ? 'архив' : '', comments]
+        .filter(Boolean)
+        .join('; ');
+
+      lines.push(
+        csvLine([
+          number,
+          name,
+          formatDate(day.date),
+          ...cells,
+          visited,
+          missed,
+          percent,
+          notes,
+        ]),
+      );
+    }
   }
 
   lines.push('');
   lines.push(
     csvLine([
       'Обозначения',
-      '+ Есть',
-      'Н Не было',
-      'Б Болеет',
-      'У Уважительная причина',
-      'О Опоздал',
+      ...STATUS_ORDER.map((status) => STATUS_META[status].label),
       '— нет отметки',
     ]),
   );
