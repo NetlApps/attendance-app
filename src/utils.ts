@@ -118,6 +118,20 @@ export function capitalizeFirst(value: string): string {
   return value ? value.charAt(0).toLocaleUpperCase('ru') + value.slice(1) : value;
 }
 
+/**
+ * Компактное ФИО для таблиц: «Иванов Иван Иванович» → «Иванов И.И.».
+ * Если в строке только одно слово, возвращает его без изменений.
+ */
+export function shortName(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return parts[0] ?? fullName;
+  const initials = parts
+    .slice(1)
+    .map((part) => (part.includes('.') ? part : `${part.charAt(0).toLocaleUpperCase('ru')}.`))
+    .join('');
+  return `${parts[0]} ${initials}`;
+}
+
 /** «на классный час» / «на 2 пару». */
 export function slotTo(pairNumber: number): string {
   return isClassHour(pairNumber) ? 'на классный час' : `на ${pairNumber} пару`;

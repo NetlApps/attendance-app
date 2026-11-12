@@ -10,6 +10,7 @@ import {
   formatPercent,
   monthLabel,
   shareTextFile,
+  shortName,
   slotName,
   slotShortName,
   statusCounts,
@@ -134,18 +135,8 @@ export function ReportsScreen({ onMark, onGroups }: ReportsScreenProps) {
     const absent = counts.absent + counts.sick + counts.excused;
     const visited = counts.present + counts.late;
     const percent = formatPercent(visited, monthRecords.length);
-    const withData = rows.filter((row) => row.total > 0);
-    const average =
-      withData.length > 0
-        ? `${Math.round(
-            withData.reduce((sum, row) => {
-              const visitedRow = row.counts.present + row.counts.late;
-              return sum + (row.total ? (visitedRow / row.total) * 100 : 0);
-            }, 0) / withData.length,
-          )}%`
-        : '—';
-    return { counts, absent, percent, average };
-  }, [monthRecords, rows]);
+    return { counts, absent, percent };
+  }, [monthRecords]);
 
   const handleExport = () => {
     if (!group || monthRecords.length === 0) {
@@ -281,8 +272,8 @@ export function ReportsScreen({ onMark, onGroups }: ReportsScreenProps) {
           </button>
         </div>
         <p className="field-hint">
-          «Красивый отчёт» — HTML-файл с карточками студентов: по каждой паре
-          написано «Есть», «Не было», «Болеет» и т.п. CSV — простая таблица для Excel.
+          «Красивый отчёт» — HTML-файл с карточками студентов. CSV — простая таблица для Excel.
+          Для печати выберите A4 и альбомную ориентацию.
         </p>
       </section>
 
@@ -295,10 +286,7 @@ export function ReportsScreen({ onMark, onGroups }: ReportsScreenProps) {
 
       <div className="print-only report-print-summary">
         <span>
-          Средняя посещаемость: <strong>{totals.average}</strong>
-        </span>
-        <span>
-          Посещаемость группы: <strong>{totals.percent}</strong>
+          Посещаемость: <strong>{totals.percent}</strong>
         </span>
         <span>
           Пропусков: <strong>{totals.absent}</strong>
@@ -323,11 +311,7 @@ export function ReportsScreen({ onMark, onGroups }: ReportsScreenProps) {
         <>
           <section className="report-stats no-print">
             <div className="report-stat">
-              <span>Средняя посещаемость</span>
-              <strong>{totals.average}</strong>
-            </div>
-            <div className="report-stat">
-              <span>Посещаемость группы</span>
+              <span>Посещаемость</span>
               <strong>{totals.percent}</strong>
             </div>
             <div className="report-stat">
@@ -351,7 +335,7 @@ export function ReportsScreen({ onMark, onGroups }: ReportsScreenProps) {
             <table className="report-table">
               <thead>
                 <tr>
-                  <th className="report-name-col">№ / ФИО</th>
+                  <th className="report-name-col">№ / Студент</th>
                   {columns.map((column) => (
                     <th key={column.key} className="report-date-col">
                       <span>{formatDateShort(column.date)}</span>
@@ -379,7 +363,7 @@ export function ReportsScreen({ onMark, onGroups }: ReportsScreenProps) {
                           row.number
                         )}
                       </span>
-                      <span>{row.student.fullName}</span>
+                      <span title={row.student.fullName}>{shortName(row.student.fullName)}</span>
                       {row.student.archived && <small>архив</small>}
                     </th>
                     {columns.map((column) => {

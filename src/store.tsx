@@ -26,6 +26,11 @@ import {
 } from './storage';
 import { uid } from './utils';
 
+/** Сравнение ФИО без учёта регистра и лишних пробелов. */
+function normalizeStudentName(value: string): string {
+  return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('ru');
+}
+
 export interface Toast {
   id: string;
   message: string;
@@ -42,6 +47,11 @@ export interface UpsertAttendanceInput {
   comment?: string;
 }
 
+export interface AddStudentsResult {
+  added: number;
+  duplicates: string[];
+}
+
 interface AppContextValue {
   data: AppData;
   activeGroup: Group | undefined;
@@ -53,8 +63,8 @@ interface AppContextValue {
   addGroup: (name: string, curator?: string) => string;
   updateGroup: (groupId: string, name: string, curator?: string) => void;
   deleteGroup: (groupId: string) => boolean;
-  addStudents: (fullNames: string[]) => number;
-  updateStudent: (studentId: string, fullName: string) => void;
+  addStudents: (fullNames: string[]) => AddStudentsResult;
+  updateStudent: (studentId: string, fullName: string) => boolean;
   archiveStudent: (studentId: string) => void;
   restoreStudent: (studentId: string) => void;
   deleteStudentPermanently: (studentId: string) => void;
@@ -197,14 +207,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const addStudents = useCallback(
-    (fullNames: string[]) => {
-      const names = fullNames.map((name) => name.trim()).filter(Boolean);
-      if (!activeGroup || names.length === 0) return 0;
+    (fullNames: string[]): AddStudentsResult => {
+      const names = fullNames
+        .map((name) => name.trim().replace(/\s+/g, ' '))
+        .filter(Boolean);
+      if (!activeGroup || names.length === 0) {
+        return { added: 0, duplicates: [] };
+      }
       const groupId = activeGroup.id;
+      const existingNames = new Set(
+        data.students
+          .filter((student) => student.groupId === groupId)
+          .map((student) => normalizeStudentName(student.fullName)),
+      );
+      const unique: string[] = [];
+      const duplicates: string[] = [];
+      for (const name of names) {
+        const key = normalizeStudentName(name);
+        if (existingNames.has(key)) {
+          duplicates.push(name);
+          continue;
+        }
+        existingNames.add(key);
+        unique.push(name);
+      }
+      if (unique.length === 0) {
+        return { added: 0, duplicates };
+      }
       setData((prev) => {
-        const existing = prev.students.filter((student) => student.groupId === groupId);
-        const maxOrder = existing.reduce((max, student) => Math.max(max, student.order), 0);
-        const created: Student[] = names.map((fullName, index) => ({
+        const maxOrder = prev.students
+          .filter((student) => student.groupId === groupId)
+          .reduce((max, student) => Math.max(max, student.order), 0);
+        const created: Student[] = unique.map((fullName, index) => ({
           id: uid('student'),
           groupId,
           fullName,
@@ -213,21 +247,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }));
         return { ...prev, students: [...prev.students, ...created] };
       });
-      return names.length;
+      return { added: unique.length, duplicates };
     },
-    [activeGroup],
+    [activeGroup, data.students],
   );
 
-  const updateStudent = useCallback((studentId: string, fullName: string) => {
-    const trimmed = fullName.trim();
-    if (!trimmed) return;
-    setData((prev) => ({
-      ...prev,
-      students: prev.students.map((student) =>
-        student.id === studentId ? { ...student, fullName: trimmed } : student,
-      ),
-    }));
-  }, []);
+  const updateStudent = useCallback(
+    (studentId: string, fullName: string): boolean => {
+      const trimmed = fullName.trim().replace(/\s+/g, ' ');
+      if (!trimmed) return false;
+      const target = data.students.find((student) => student.id === studentId);
+      if (!target) return false;
+      const duplicate = data.students.some(
+        (student) =>
+          student.id !== studentId &&
+          student.groupId === target.groupId &&
+          normalizeStudentName(student.fullName) === normalizeStudentName(trimmed),
+      );
+      if (duplicate) return false;
+      setData((prev) => ({
+        ...prev,
+        students: prev.students.map((student) =>
+          student.id === studentId ? { ...student, fullName: trimmed } : student,
+        ),
+      }));
+      return true;
+    },
+    [data.students],
+  );
 
   const archiveStudent = useCallback((studentId: string) => {
     setData((prev) => ({

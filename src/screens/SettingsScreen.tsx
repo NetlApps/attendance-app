@@ -736,7 +736,27 @@ export function SettingsScreen() {
     <div className="screen settings-screen">
       <PageHeader title="Настройки" subtitle="Оформление, расписание, напоминания и данные" />
 
-      <section className="card">
+      <nav className="settings-nav no-print" aria-label="Разделы настроек">
+        {[
+          ['settings-theme', 'Тема'],
+          ['settings-reminders', 'Напоминания'],
+          ['settings-schedule', 'Расписание'],
+          ['settings-updates', 'Обновления'],
+          ['settings-backup', 'Данные'],
+        ].map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() =>
+              document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            }
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      <section className="card" id="settings-theme">
         <div className="section-head">
           <h2>
             <Icon name="palette" size={20} />
@@ -796,7 +816,7 @@ export function SettingsScreen() {
         </div>
       </section>
 
-      <section className="card">
+      <section className="card" id="settings-reminders">
         <div className="section-head">
           <h2>
             <Icon name="bell" size={20} />
@@ -1034,7 +1054,7 @@ export function SettingsScreen() {
         </button>
       </section>
 
-      <section className="card">
+      <section className="card" id="settings-schedule">
         <div className="section-head">
           <h2>
             <Icon name="clock" size={20} />
@@ -1070,29 +1090,31 @@ export function SettingsScreen() {
               >
                 {isClassHour(item.pairNumber) ? 'КЧ' : item.pairNumber}
               </span>
-              <label className="field compact">
-                <span>Начало</span>
-                <input
-                  type="time"
-                  className="input"
-                  value={item.start}
-                  onChange={(event) =>
-                    updateScheduleTime(scheduleDay, item.pairNumber, 'start', event.target.value)
-                  }
-                />
-              </label>
-              <span className="schedule-dash">—</span>
-              <label className="field compact">
-                <span>Конец</span>
-                <input
-                  type="time"
-                  className="input"
-                  value={item.end}
-                  onChange={(event) =>
-                    updateScheduleTime(scheduleDay, item.pairNumber, 'end', event.target.value)
-                  }
-                />
-              </label>
+              <div className="schedule-times">
+                <label className="field compact">
+                  <span>Начало</span>
+                  <input
+                    type="time"
+                    className="input"
+                    value={item.start}
+                    onChange={(event) =>
+                      updateScheduleTime(scheduleDay, item.pairNumber, 'start', event.target.value)
+                    }
+                  />
+                </label>
+                <span className="schedule-dash">—</span>
+                <label className="field compact">
+                  <span>Конец</span>
+                  <input
+                    type="time"
+                    className="input"
+                    value={item.end}
+                    onChange={(event) =>
+                      updateScheduleTime(scheduleDay, item.pairNumber, 'end', event.target.value)
+                    }
+                  />
+                </label>
+              </div>
               <button
                 type="button"
                 className="schedule-remove"
@@ -1141,7 +1163,7 @@ export function SettingsScreen() {
         </div>
       </section>
 
-      <section className="card update-settings-card">
+      <section className="card update-settings-card" id="settings-updates">
         <div className="section-head">
           <h2>
             <Icon name="arrow-down" size={20} />
@@ -1158,7 +1180,6 @@ export function SettingsScreen() {
             <strong>Установленная версия</strong>
             <span>Обновление не удаляет группы, студентов и историю</span>
           </div>
-          <span className="pill">{appVersion}</span>
         </div>
 
         {isAndroidApp ? (
@@ -1231,7 +1252,7 @@ export function SettingsScreen() {
         )}
       </section>
 
-      <section className="card">
+      <section className="card" id="settings-backup">
         <div className="section-head">
           <h2>
             <Icon name="download" size={20} />

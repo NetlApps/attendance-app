@@ -533,6 +533,27 @@ function AppContent() {
   const [route, setRoute] = useState<Route>({ name: 'home' });
   const [stack, setStack] = useState<Route[]>([]);
   const transitionOrigin = useRef({ x: 0, y: 0, hasPointer: false });
+  const historyReady = useRef(false);
+
+  const pushHistory = () => {
+    window.history.pushState({ attendanceApp: true }, '');
+  };
+
+  useEffect(() => {
+    if (!historyReady.current) {
+      window.history.replaceState(
+        { ...(window.history.state ?? {}), attendanceApp: true },
+        '',
+      );
+      historyReady.current = true;
+    }
+    const handlePopState = () => {
+      if (route.name === 'home' && stack.length === 0) return;
+      back();
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [route, stack]);
 
   useEffect(() => {
     const rememberOrigin = (event: PointerEvent) => {
@@ -660,6 +681,7 @@ function AppContent() {
 
   const navigate = (next: Route) => {
     runTransition(() => {
+      if (next.name !== route.name) pushHistory();
       setStack((current) => [...current, route]);
       setRoute(next);
     });
@@ -667,6 +689,7 @@ function AppContent() {
 
   const resetTo = (next: Route) => {
     runTransition(() => {
+      if (next.name !== route.name) pushHistory();
       setStack([]);
       setRoute(next);
     });
@@ -697,7 +720,10 @@ function AppContent() {
   }, [route, stack]);
 
   const replace = (next: Route) => {
-    runTransition(() => setRoute(next));
+    runTransition(() => {
+      window.history.replaceState({ attendanceApp: true }, '');
+      setRoute(next);
+    });
   };
 
   const activeTab = tabs.find((tab) => tab.match.includes(route.name));
@@ -708,7 +734,6 @@ function AppContent() {
     screen = (
       <HomeScreen
         onMark={() => navigate({ name: 'mark-setup' })}
-        onCalendar={() => resetTo({ name: 'calendar' })}
         onReports={() => resetTo({ name: 'reports' })}
         onStudents={() => resetTo({ name: 'students' })}
         onSettings={() => resetTo({ name: 'settings' })}

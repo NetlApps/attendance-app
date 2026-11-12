@@ -81,6 +81,10 @@ export function GroupsScreen({ onBack, onSelected, onStudents }: GroupsScreenPro
     try {
       const parsed = parseGroupShareFile(await file.text());
       const result = buildImportedGroupData(data, parsed);
+      if (result.studentCount === 0) {
+        notify('В файле нет студентов — группа не импортирована', 'error');
+        return;
+      }
       replaceData(result.data);
       const studentsLabel = `${result.studentCount} ${plural(
         result.studentCount,
@@ -145,21 +149,16 @@ export function GroupsScreen({ onBack, onSelected, onStudents }: GroupsScreenPro
         subtitle="Каждая группа хранит своих студентов и историю"
         onBack={onBack}
         actions={
-          <>
-            <button
-              type="button"
-              className="icon-button"
-              onClick={handleImportClick}
-              disabled={importing}
-              aria-label="Импортировать группу"
-              title="Импортировать группу из файла"
-            >
-              <Icon name="upload" />
-            </button>
-            <button type="button" className="icon-button" onClick={openCreate} aria-label="Создать группу">
-              <Icon name="plus" />
-            </button>
-          </>
+          <button
+            type="button"
+            className="icon-button"
+            onClick={handleImportClick}
+            disabled={importing}
+            aria-label="Импортировать группу"
+            title="Импортировать группу из файла"
+          >
+            <Icon name="upload" />
+          </button>
         }
       />
 
@@ -201,18 +200,6 @@ export function GroupsScreen({ onBack, onSelected, onStudents }: GroupsScreenPro
                   }}
                 >
                   {isActive ? 'Открыть' : 'Выбрать группу'}
-                </button>
-                <button
-                  type="button"
-                  className="icon-button bordered"
-                  onClick={() => {
-                    setActiveGroup(group.id);
-                    onStudents();
-                  }}
-                  aria-label={`Студенты группы ${group.name}`}
-                  title="Студенты группы"
-                >
-                  <Icon name="users" size={18} />
                 </button>
                 <button
                   type="button"
@@ -284,6 +271,16 @@ export function GroupsScreen({ onBack, onSelected, onStudents }: GroupsScreenPro
         group={editing}
         onClose={() => setFormOpen(false)}
         onSave={(name, curator) => {
+          const trimmed = name.trim();
+          const duplicate = data.groups.some(
+            (group) =>
+              group.id !== editing?.id &&
+              group.name.trim().toLocaleLowerCase('ru') === trimmed.toLocaleLowerCase('ru'),
+          );
+          if (duplicate) {
+            notify('Группа с таким названием уже есть', 'error');
+            return;
+          }
           if (editing) {
             updateGroup(editing.id, name, curator);
             notify('Группа обновлена');

@@ -29,6 +29,7 @@ export function StudentsScreen({ onGroups }: StudentsScreenProps) {
   const [showArchive, setShowArchive] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [editStudent, setEditStudent] = useState<Student | null>(null);
+  const [actionsStudent, setActionsStudent] = useState<Student | null>(null);
 
   const groupStudents = useMemo(() => {
     if (!activeGroup) return [];
@@ -142,22 +143,26 @@ export function StudentsScreen({ onGroups }: StudentsScreenProps) {
           )}
         </div>
         <div className="students-toolbar-actions">
-          <button type="button" className="btn btn-primary" onClick={() => setAddOpen(true)}>
-            <Icon name="plus" />
-            Добавить
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => {
-              sortStudentsAlphabetically();
-              notify('Список отсортирован по алфавиту', 'info');
-            }}
-            disabled={activeStudents.length < 2}
-          >
-            <Icon name="arrow-down" />
-            По алфавиту
-          </button>
+          {!showArchive && (
+            <>
+              <button type="button" className="btn btn-primary" onClick={() => setAddOpen(true)}>
+                <Icon name="plus" />
+                Добавить
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  sortStudentsAlphabetically();
+                  notify('Список отсортирован по алфавиту', 'info');
+                }}
+                disabled={activeStudents.length < 2}
+              >
+                <Icon name="arrow-down" />
+                По алфавиту
+              </button>
+            </>
+          )}
         </div>
       </section>
 
@@ -207,7 +212,7 @@ export function StudentsScreen({ onGroups }: StudentsScreenProps) {
         )}
 
         <div className="student-list">
-          {(showArchive ? archivedFiltered : activeFiltered).map((student, index, list) => (
+          {(showArchive ? archivedFiltered : activeFiltered).map((student) => (
             <div
               key={student.id}
               className={`student-row${student.archived ? ' is-archived' : ''}`}
@@ -224,69 +229,18 @@ export function StudentsScreen({ onGroups }: StudentsScreenProps) {
                 <strong>{student.fullName}</strong>
               </button>
 
-              {!showArchive && (
-                <div className="student-row-actions">
-                  <button
-                    type="button"
-                    className="icon-button small"
-                    onClick={() => moveStudent(student.id, -1)}
-                    disabled={index === 0}
-                    aria-label="Переместить выше"
-                  >
-                    <Icon name="arrow-up" size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    className="icon-button small"
-                    onClick={() => moveStudent(student.id, 1)}
-                    disabled={index === list.length - 1}
-                    aria-label="Переместить ниже"
-                  >
-                    <Icon name="arrow-down" size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    className="icon-button small"
-                    onClick={() => handleArchive(student)}
-                    aria-label="Убрать в архив"
-                    title="Убрать в архив"
-                  >
-                    <Icon name="archive" size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    className="icon-button small danger"
-                    onClick={() => handleDelete(student)}
-                    aria-label="Удалить навсегда"
-                    title="Удалить навсегда"
-                  >
-                    <Icon name="trash" size={16} />
-                  </button>
-                </div>
-              )}
+              <div className="student-row-actions">
+                <button
+                  type="button"
+                  className="icon-button small"
+                  onClick={() => setActionsStudent(student)}
+                  aria-label={`Действия: ${student.fullName}`}
+                  title="Действия"
+                >
+                  <Icon name="menu" size={18} />
+                </button>
+              </div>
 
-              {showArchive && (
-                <div className="student-row-actions">
-                  <button
-                    type="button"
-                    className="icon-button small"
-                    onClick={() => handleRestore(student)}
-                    aria-label="Вернуть в список"
-                    title="Вернуть в список"
-                  >
-                    <Icon name="restore" size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    className="icon-button small danger"
-                    onClick={() => handleDelete(student)}
-                    aria-label="Удалить навсегда"
-                    title="Удалить навсегда"
-                  >
-                    <Icon name="trash" size={16} />
-                  </button>
-                </div>
-              )}
             </div>
           ))}
         </div>
@@ -296,9 +250,17 @@ export function StudentsScreen({ onGroups }: StudentsScreenProps) {
         open={addOpen}
         onClose={() => setAddOpen(false)}
         onAdd={(names) => {
-          const count = addStudents(names);
-          if (count > 0) notify(`Добавлено: ${count}`);
-          setAddOpen(false);
+          const result = addStudents(names);
+          if (result.added > 0) {
+            notify(
+              result.duplicates.length > 0
+                ? `Добавлено: ${result.added}. Уже были в группе: ${result.duplicates.length}.`
+                : `Добавлено: ${result.added}`,
+            );
+          } else if (result.duplicates.length > 0) {
+            notify('Такие студенты уже есть в группе', 'error');
+          }
+          if (result.added > 0) setAddOpen(false);
         }}
       />
 
@@ -307,12 +269,116 @@ export function StudentsScreen({ onGroups }: StudentsScreenProps) {
         onClose={() => setEditStudent(null)}
         onSave={(fullName) => {
           if (editStudent) {
-            updateStudent(editStudent.id, fullName);
+            if (!updateStudent(editStudent.id, fullName)) {
+              notify('Студент с таким ФИО уже есть в группе', 'error');
+              return;
+            }
             notify('ФИО обновлено');
           }
           setEditStudent(null);
         }}
       />
+
+      <Modal
+        open={Boolean(actionsStudent)}
+        onClose={() => setActionsStudent(null)}
+        title={actionsStudent?.fullName ?? 'Студент'}
+        subtitle={actionsStudent?.archived ? 'Студент в архиве' : 'Действия со студентом'}
+        footer={
+          <div className="modal-footer-row">
+            <button type="button" className="btn btn-ghost" onClick={() => setActionsStudent(null)}>
+              Отмена
+            </button>
+          </div>
+        }
+      >
+        {actionsStudent && (
+          <div className="student-actions-list">
+            <button
+              type="button"
+              className="btn btn-secondary btn-block student-action-button"
+              onClick={() => {
+                setEditStudent(actionsStudent);
+                setActionsStudent(null);
+              }}
+            >
+              <Icon name="edit" size={18} />
+              Изменить ФИО
+            </button>
+            {!actionsStudent.archived && (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-block student-action-button"
+                  disabled={
+                    activeFiltered.findIndex((item) => item.id === actionsStudent.id) <= 0
+                  }
+                  onClick={() => {
+                    moveStudent(actionsStudent.id, -1);
+                    setActionsStudent(null);
+                  }}
+                >
+                  <Icon name="arrow-up" size={18} />
+                  Переместить выше
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-block student-action-button"
+                  disabled={
+                    activeFiltered.findIndex((item) => item.id === actionsStudent.id) >=
+                    activeFiltered.length - 1
+                  }
+                  onClick={() => {
+                    moveStudent(actionsStudent.id, 1);
+                    setActionsStudent(null);
+                  }}
+                >
+                  <Icon name="arrow-down" size={18} />
+                  Переместить ниже
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-block student-action-button"
+                  onClick={() => {
+                    const target = actionsStudent;
+                    setActionsStudent(null);
+                    handleArchive(target);
+                  }}
+                >
+                  <Icon name="archive" size={18} />
+                  Убрать в архив
+                </button>
+              </>
+            )}
+            {actionsStudent.archived && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-block student-action-button"
+                onClick={() => {
+                  const target = actionsStudent;
+                  setActionsStudent(null);
+                  handleRestore(target);
+                }}
+              >
+                <Icon name="restore" size={18} />
+                Вернуть в список
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn-danger-ghost btn-block student-action-button"
+              onClick={() => {
+                const target = actionsStudent;
+                setActionsStudent(null);
+                handleDelete(target);
+              }}
+            >
+              <Icon name="trash" size={18} />
+              Удалить навсегда
+            </button>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

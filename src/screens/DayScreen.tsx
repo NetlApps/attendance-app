@@ -10,8 +10,8 @@ import {
   plural,
   scheduleForDate,
   slotName,
-  slotNumbersForDate,
   slotShortName,
+  sortPairNumbers,
   statusCounts,
   weekdayLong,
 } from '../utils';
@@ -57,13 +57,13 @@ export function DayScreen({ groupId, date, onBack, onOpenPair, onMark }: DayScre
     [records],
   );
 
-  /** Все занятия дня: обычные пары и классный час, если он есть в расписании. */
+  /** Занятия дня: пары из расписания и всё, по чему уже есть отметки. */
   const daySlots = useMemo(
     () =>
-      slotNumbersForDate(
-        dateSchedule,
-        records.map((record) => record.pairNumber),
-      ),
+      sortPairNumbers([
+        ...dateSchedule.map((item) => item.pairNumber),
+        ...records.map((record) => record.pairNumber),
+      ]),
     [dateSchedule, records],
   );
 
@@ -129,6 +129,13 @@ export function DayScreen({ groupId, date, onBack, onOpenPair, onMark }: DayScre
           </div>
         )}
 
+        {daySlots.length === 0 && (
+          <div className="inline-note">
+            <Icon name="info" size={18} />
+            <span>В этот день занятий нет. Можно отметить посещаемость вручную.</span>
+          </div>
+        )}
+
         <div className="day-pair-list">
           {daySlots.map((pair) => {
             const pairRecords = records.filter((record) => record.pairNumber === pair);
@@ -174,7 +181,7 @@ export function DayScreen({ groupId, date, onBack, onOpenPair, onMark }: DayScre
                       </span>
                     </>
                   ) : (
-                    <span className="pill">нет</span>
+                    <span className="pill">не отмечено</span>
                   )}
                   <Icon name="chevron-right" size={18} />
                 </span>

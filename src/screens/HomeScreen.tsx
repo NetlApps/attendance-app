@@ -5,26 +5,29 @@ import { buildReportHtml, reportHtmlFileName } from '../reportHtml';
 import {
   comparePairNumbers,
   currentPairNumber,
+  capitalizeFirst,
   formatDate,
   formatPercent,
   monthKeyFromISO,
   monthLabel,
+  minutesFromHHMM,
   pairTimeLabel,
   plural,
   scheduleForDate,
   shareTextFile,
+  shortName,
+  slotAt,
   slotName,
   slotNameLower,
   statusCounts,
   todayISO,
   weekdayLong,
 } from '../utils';
-import { Icon, type IconName } from '../components/Icon';
+import { Icon } from '../components/Icon';
 import { StatusChip } from '../components/StatusChip';
 
 interface HomeScreenProps {
   onMark: () => void;
-  onCalendar: () => void;
   onReports: () => void;
   onStudents: () => void;
   onSettings: () => void;
@@ -32,16 +35,8 @@ interface HomeScreenProps {
   onOpenPair: (date: string, pairNumber: number) => void;
 }
 
-const quickActions: { label: string; icon: IconName; key: string }[] = [
-  { label: 'Календарь', icon: 'calendar', key: 'calendar' },
-  { label: 'Отчёты', icon: 'chart', key: 'reports' },
-  { label: 'Студенты', icon: 'users', key: 'students' },
-  { label: 'Настройки', icon: 'settings', key: 'settings' },
-];
-
 export function HomeScreen({
   onMark,
-  onCalendar,
   onReports,
   onStudents,
   onSettings,
@@ -68,17 +63,30 @@ export function HomeScreen({
   const monthPercent = formatPercent(visited, monthRecords.length);
   const todaySchedule = scheduleForDate(data.settings, today);
   const currentPair = currentPairNumber(todaySchedule);
+  const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+  const nextPair = todaySchedule.find(
+    (item) => minutesFromHHMM(item.start) > nowMinutes,
+  )?.pairNumber;
 
   const pairs = Array.from(new Set(todayRecords.map((record) => record.pairNumber))).sort(
     comparePairNumbers,
   );
 
-  const actions: Record<string, () => void> = {
-    calendar: onCalendar,
-    reports: onReports,
-    students: onStudents,
-    settings: onSettings,
-  };
+  const lastPair = pairs.length > 0 ? pairs[pairs.length - 1] : undefined;
+  const absentToday = lastPair
+    ? todayRecords
+        .filter(
+          (record) =>
+            record.pairNumber === lastPair &&
+            (record.status === 'absent' ||
+              record.status === 'sick' ||
+              record.status === 'excused'),
+        )
+        .flatMap((record) => {
+          const student = activeStudents.find((candidate) => candidate.id === record.studentId);
+          return student ? [{ record, student }] : [];
+        })
+    : [];
 
   const handleShare = async (period: 'today' | 'month') => {
     if (!activeGroup) {
@@ -171,7 +179,13 @@ export function HomeScreen({
           </span>
           <span className="mark-hero-text">
             <span className="mark-hero-kicker">
-              {currentPair ? `Сейчас идёт ${slotNameLower(currentPair)}` : 'Отметка на сегодня'}
+              {currentPair
+                ? `Сейчас идёт ${slotNameLower(currentPair)}`
+                : nextPair
+                  ? `Следующая — ${slotNameLower(nextPair)} в ${
+                      pairTimeLabel(todaySchedule, nextPair).split('–')[0]
+                    }`
+                  : 'Отметка на сегодня'}
             </span>
             <strong>Отметить посещаемость</strong>
             <span>
@@ -216,45 +230,72 @@ export function HomeScreen({
               <Icon name="clock" size={20} />
             </span>
             <div>
-              <strong>Ещё не отмечено</strong>
-              <p>Когда будете готовы, нажмите «Отметить посещаемость».</p>
+              <strong>
+                {activeStudents.length === 0 ? 'Сначала добавьте студентов' : 'Ещё не отмечено'}
+              </strong>
+              <p>
+                {activeStudents.length === 0
+                  ? 'После добавления здесь появятся отмеченные пары.'
+                  : 'Когда будете готовы, нажмите «Отметить посещаемость».'}
+              </p>
             </div>
           </div>
         ) : (
-          <div className="pair-chip-list">
-            {pairs.map((pair) => {
-              const records = todayRecords.filter((record) => record.pairNumber === pair);
-              const counts = statusCounts(records);
-              return (
-                <button
-                  key={pair}
-                  type="button"
-                  className="pair-chip"
-                  onClick={() => onOpenPair(today, pair)}
-                >
-                  <span className="pair-chip-number">{slotName(pair)}</span>
-                  <span className="pair-chip-time">
-                    {pairTimeLabel(todaySchedule, pair) || 'время не задано'}
-                  </span>
-                  <span className="pair-chip-count">
-                    {records.length} из {activeStudents.length}
-                    <Icon name="chevron-right" size={16} />
-                  </span>
-                  <span className="pair-chip-statuses">
-                    {STATUS_ORDER.filter((status) => counts[status] > 0).map((status) => (
-                      <span key={status} title={STATUS_META[status].label}>
-                        <StatusChip status={status} short />
-                      </span>
-                    ))}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          <>
+            <div className="pair-chip-list">
+              {pairs.map((pair) => {
+                const records = todayRecords.filter((record) => record.pairNumber === pair);
+                const counts = statusCounts(records);
+                return (
+                  <button
+                    key={pair}
+                    type="button"
+                    className="pair-chip"
+                    onClick={() => onOpenPair(today, pair)}
+                  >
+                    <span className="pair-chip-number">{slotName(pair)}</span>
+                    <span className="pair-chip-time">
+                      {pairTimeLabel(todaySchedule, pair) || 'время не задано'}
+                    </span>
+                    <span className="pair-chip-count">
+                      {records.length} из {activeStudents.length}
+                      <Icon name="chevron-right" size={16} />
+                    </span>
+                    <span className="pair-chip-statuses">
+                      {STATUS_ORDER.filter((status) => counts[status] > 0).map((status) => (
+                        <span key={status} title={STATUS_META[status].label}>
+                          <StatusChip status={status} short />
+                        </span>
+                      ))}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {lastPair !== undefined && absentToday.length > 0 && (
+              <div className="today-absent">
+                <span className="today-absent-title">
+                  {capitalizeFirst(slotAt(lastPair))} отсутствуют:
+                </span>
+                <div className="today-absent-list">
+                  {absentToday.slice(0, 6).map(({ record, student }) => (
+                    <span key={record.id} className="today-absent-item">
+                      <StatusChip status={record.status} short />
+                      <span>{shortName(student.fullName)}</span>
+                    </span>
+                  ))}
+                  {absentToday.length > 6 && (
+                    <span className="muted">ещё {absentToday.length - 6}</span>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </section>
 
-      {activeGroup && (
+      {activeGroup && activeStudents.length > 0 && (
         <section className="card share-card">
           <div className="section-head">
             <h2>
@@ -263,9 +304,8 @@ export function HomeScreen({
             </h2>
           </div>
           <p className="muted share-hint">
-            Красивый HTML-отчёт для мессенджера: по каждому студенту видно, что было на
-            каждой паре. Открывается в браузере, можно распечатать. Для Excel есть
-            «Отчёты → CSV для Excel».
+            HTML-отчёт для мессенджера: видно каждую пару каждого студента. Для Excel —
+            «Отчёты → CSV».
           </p>
           <div className="share-actions">
             <button
@@ -294,22 +334,6 @@ export function HomeScreen({
           )}
         </section>
       )}
-
-      <section className="quick-grid" aria-label="Быстрый доступ">
-        {quickActions.map((action) => (
-          <button
-            key={action.key}
-            type="button"
-            className="quick-action"
-            onClick={actions[action.key]}
-          >
-            <span className="quick-action-icon">
-              <Icon name={action.icon} size={24} />
-            </span>
-            <span>{action.label}</span>
-          </button>
-        ))}
-      </section>
 
       <section className="card month-card">
         <div className="section-head">
