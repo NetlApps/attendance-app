@@ -1,5 +1,10 @@
-import { useMemo, useState } from 'react';
-import { STATUS_META, STATUS_ORDER } from '../constants';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  absenceCsvFileName,
+  buildAbsencesCsv,
+  type AbsenceFilter,
+} from '../absenceReport';
+import { ABSENCE_STATUSES, STATUS_META, STATUS_ORDER } from '../constants';
 import type { Attendance, Status, Student } from '../types';
 import { useApp } from '../store';
 import {
@@ -23,6 +28,11 @@ import { AttendanceEditModal } from '../components/AttendanceEditModal';
 import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
 import { PageHeader } from '../components/PageHeader';
+import {
+  GroupAbsencesModal,
+  StudentAttendanceModal,
+  type AbsenceEntry,
+} from '../components/ReportAttendanceModal';
 import { StatusChip } from '../components/StatusChip';
 
 interface ReportsScreenProps {
@@ -56,9 +66,16 @@ export function ReportsScreen({ onMark, onGroups }: ReportsScreenProps) {
   );
   const [month, setMonth] = useState(() => todayISO().slice(0, 7));
   const [editing, setEditing] = useState<EditingCell | null>(null);
+  const [detailStudentId, setDetailStudentId] = useState<string | null>(null);
+  const [absencesOpen, setAbsencesOpen] = useState(false);
 
   const group =
     data.groups.find((candidate) => candidate.id === groupId) ?? data.groups[0];
+
+  useEffect(() => {
+    setDetailStudentId(null);
+    setAbsencesOpen(false);
+  }, [group?.id, month]);
 
   const monthRecords = useMemo(() => {
     if (!group) return [];
@@ -138,6 +155,17 @@ export function ReportsScreen({ onMark, onGroups }: ReportsScreenProps) {
     return { counts, absent, percent };
   }, [monthRecords]);
 
+  const absenceEntries = useMemo<AbsenceEntry[]>(() => {
+    const students = new Map(data.students.map((student) => [student.id, student]));
+    return monthRecords.flatMap((record) => {
+      if (!ABSENCE_STATUSES.includes(record.status)) return [];
+      const student = students.get(record.studentId);
+      return student ? [{ record, student }] : [];
+    });
+  }, [data.students, monthRecords]);
+
+  const detailRow = rows.find((row) => row.student.id === detailStudentId) ?? null;
+
   const handleExport = () => {
     if (!group || monthRecords.length === 0) {
       notify('За выбранный месяц пока нет данных для отчёта.', 'info');
@@ -152,6 +180,23 @@ export function ReportsScreen({ onMark, onGroups }: ReportsScreenProps) {
         records: monthRecords,
         periodLabel: monthLabel(month),
         periodCaption: 'Месяц',
+      }),
+      'text/csv;charset=utf-8',
+    );
+  };
+
+  const handleExportAbsencesCsv = (entries: AbsenceEntry[], filter: AbsenceFilter) => {
+    if (!group || entries.length === 0) {
+      notify('Нет пропусков для выгрузки.', 'info');
+      return;
+    }
+    downloadTextFile(
+      absenceCsvFileName(group.name, month, filter),
+      buildAbsencesCsv({
+        groupName: group.name,
+        month,
+        filter,
+        entries,
       }),
       'text/csv;charset=utf-8',
     );
@@ -258,22 +303,10 @@ export function ReportsScreen({ onMark, onGroups }: ReportsScreenProps) {
             <Icon name="download" />
             CSV для Excel
           </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => {
-              if (window.AndroidApp?.printPage) window.AndroidApp.printPage();
-              else window.print();
-            }}
-            disabled={monthRecords.length === 0}
-          >
-            <Icon name="print" />
-            Печать / PDF
-          </button>
         </div>
         <p className="field-hint">
-          «Красивый отчёт» — HTML-файл с карточками студентов. CSV — простая таблица для Excel.
-          Для печати выберите A4 и альбомную ориентацию.
+          «Красивый отчёт» — HTML с карточками студентов. CSV — для Excel. Печать — в
+          настройках, раздел «Дополнительно».
         </p>
       </section>
 
@@ -314,10 +347,18 @@ export function ReportsScreen({ onMark, onGroups }: ReportsScreenProps) {
               <span>Посещаемость</span>
               <strong>{totals.percent}</strong>
             </div>
-            <div className="report-stat">
+            <button
+              type="button"
+              className="report-stat report-stat-action"
+              onClick={() => setAbsencesOpen(true)}
+              aria-label={`Открыть список пропусков: ${totals.absent}`}
+            >
               <span>Пропусков</span>
               <strong>{totals.absent}</strong>
-            </div>
+              <span className="report-stat-arrow" aria-hidden="true">
+                <Icon name="chevron-right" size={15} />
+              </span>
+            </button>
             <div className="report-stat">
               <span>Занятий отмечено</span>
               <strong>{columns.length}</strong>
@@ -363,7 +404,16 @@ export function ReportsScreen({ onMark, onGroups }: ReportsScreenProps) {
                           row.number
                         )}
                       </span>
-                      <span title={row.student.fullName}>{shortName(row.student.fullName)}</span>
+                      <button
+                        type="button"
+                        className="report-student-button"
+                        onClick={() => setDetailStudentId(row.student.id)}
+                        title={`Открыть все отметки: ${row.student.fullName}`}
+                        aria-label={`Открыть посещаемость: ${row.student.fullName}`}
+                      >
+                        <span>{shortName(row.student.fullName)}</span>
+                        <Icon name="chevron-right" size={14} />
+                      </button>
                       {row.student.archived && <small>архив</small>}
                     </th>
                     {columns.map((column) => {
@@ -415,9 +465,33 @@ export function ReportsScreen({ onMark, onGroups }: ReportsScreenProps) {
           </div>
 
           <p className="field-hint no-print">
-            Нажмите на цветную клетку, чтобы изменить статус, посмотреть комментарий или удалить отметку.
+            Нажмите на ФИО, чтобы открыть все отметки студента, на «Пропусков» — список
+            пропусков, на цветную клетку — изменить статус.
           </p>
         </>
+      )}
+
+      {detailRow && (
+        <StudentAttendanceModal
+          student={detailRow.student}
+          records={recordsByStudent.get(detailRow.student.id) ?? []}
+          month={month}
+          onClose={() => setDetailStudentId(null)}
+        />
+      )}
+
+      {absencesOpen && (
+        <GroupAbsencesModal
+          entries={absenceEntries}
+          groupName={group.name}
+          month={month}
+          onClose={() => setAbsencesOpen(false)}
+          onSelectStudent={(studentId) => {
+            setAbsencesOpen(false);
+            setDetailStudentId(studentId);
+          }}
+          onExportCsv={handleExportAbsencesCsv}
+        />
       )}
 
       {editing && (

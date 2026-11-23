@@ -487,7 +487,8 @@ export function listNativeBackups(): NativeBackupEntry[] {
         name: item.name,
         savedAt: Number(item.savedAt) || 0,
         size: Number(item.size) || 0,
-      }));
+      }))
+      .sort((a, b) => b.savedAt - a.savedAt);
   } catch (error) {
     console.error('Не удалось прочитать список копий на телефоне:', error);
     return [];

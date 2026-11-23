@@ -67,6 +67,8 @@ declare global {
     listDataBackups?: () => string;
     /** Читает снимок данных по имени файла. */
     readDataBackup?: (name: string) => string;
+    /** Переносит старые JSON-копии из «Загрузок» в приватное хранилище. */
+    migrateLegacyBackups?: () => string;
   }
 
   interface Window {

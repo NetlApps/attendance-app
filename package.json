@@ -1,7 +1,7 @@
 {
   "name": "attendance-app",
   "private": true,
-  "version": "1.4.16",
+  "version": "1.4.17",
   "type": "module",
   "description": "Учёт посещаемости учебной группы",
   "scripts": {

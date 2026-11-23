@@ -1,12 +1,15 @@
 import type { Status, ThemeId } from './types';
 
-export const APP_VERSION = '1.4.16';
+export const APP_VERSION = '1.4.17';
 export const DEFAULT_UPDATE_URL = 'https://netlapps.github.io/attendance-app/update.json';
 export const DATA_VERSION = 2;
 export const STORAGE_KEY = 'attendance-app-data-v1';
 export const FIRED_REMINDERS_KEY = 'attendance-app-fired-reminders-v1';
 
 export const STATUS_ORDER: Status[] = ['present', 'absent', 'sick', 'excused', 'late'];
+
+/** Статусы, которые считаются пропуском занятия. */
+export const ABSENCE_STATUSES: Status[] = ['absent', 'sick', 'excused'];
 
 export const STATUS_META: Record<
   Status,

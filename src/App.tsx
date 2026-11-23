@@ -529,11 +529,34 @@ function UpdateBanner({
 }
 
 function AppContent() {
-  const { data, activeGroup, toasts, dismissToast } = useApp();
+  const { data, activeGroup, toasts, dismissToast, notify } = useApp();
   const [route, setRoute] = useState<Route>({ name: 'home' });
   const [stack, setStack] = useState<Route[]>([]);
   const transitionOrigin = useRef({ x: 0, y: 0, hasPointer: false });
   const historyReady = useRef(false);
+
+  // Один раз после запуска переносим старые JSON-копии из «Загрузок» в
+  // приватное хранилище приложения, чтобы они не мешались в проводнике.
+  useEffect(() => {
+    const bridge = window.AndroidApp;
+    if (!bridge?.migrateLegacyBackups) return;
+    const timer = window.setTimeout(() => {
+      try {
+        const raw = bridge.migrateLegacyBackups?.();
+        if (!raw) return;
+        const result = JSON.parse(raw) as { moved?: number };
+        if ((result.moved ?? 0) > 0) {
+          notify(
+            `Старые копии перенесены в приложение: ${result.moved}. Из «Загрузок» они удалены.`,
+            'info',
+          );
+        }
+      } catch {
+        // Перенос не критичен: приложение продолжает работать с обычными копиями.
+      }
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [notify]);
 
   const pushHistory = () => {
     window.history.pushState({ attendanceApp: true }, '');

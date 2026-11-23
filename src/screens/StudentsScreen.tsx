@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import type { Student } from '../types';
 import { useApp } from '../store';
 import { plural } from '../utils';
@@ -26,6 +26,7 @@ export function StudentsScreen({ onGroups }: StudentsScreenProps) {
     notify,
   } = useApp();
   const [query, setQuery] = useState('');
+  const deferredQuery = useDeferredValue(query);
   const [showArchive, setShowArchive] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [editStudent, setEditStudent] = useState<Student | null>(null);
@@ -39,7 +40,7 @@ export function StudentsScreen({ onGroups }: StudentsScreenProps) {
   }, [data.students, activeGroup]);
 
   const archived = groupStudents.filter((student) => student.archived);
-  const normalizedQuery = query.trim().toLocaleLowerCase('ru');
+  const normalizedQuery = deferredQuery.trim().toLocaleLowerCase('ru');
   const matches = (student: Student) =>
     !normalizedQuery ||
     student.fullName.toLocaleLowerCase('ru').includes(normalizedQuery);

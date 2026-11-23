@@ -5,6 +5,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -91,21 +92,44 @@ const AppContext = createContext<AppContextValue | null>(null);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<AppData>(() => loadData());
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const dataRef = useRef(data);
+  dataRef.current = data;
 
+  // Сохраняем не на каждое нажатие, а через короткую паузу: список отметок
+  // прокручивается и переключается заметно плавнее, данные не теряются.
   useEffect(() => {
-    const ok = saveData(data);
-    if (!ok) {
-      setToasts((current) => [
-        ...current,
-        {
-          id: uid('toast'),
-          message:
-            'Не удалось сохранить данные в браузере. Сделайте резервную копию в настройках.',
-          kind: 'error',
-        },
-      ]);
-    }
+    const timer = window.setTimeout(() => {
+      const ok = saveData(dataRef.current);
+      if (!ok) {
+        setToasts((current) => [
+          ...current,
+          {
+            id: uid('toast'),
+            message:
+              'Не удалось сохранить данные в браузере. Сделайте резервную копию в настройках.',
+            kind: 'error',
+          },
+        ]);
+      }
+    }, 180);
+    return () => window.clearTimeout(timer);
   }, [data]);
+
+  // Если приложение закрывают или сворачивают, сохраняем сразу.
+  useEffect(() => {
+    const flush = () => {
+      saveData(dataRef.current);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, []);
 
   useLayoutEffect(() => {
     const root = document.documentElement;

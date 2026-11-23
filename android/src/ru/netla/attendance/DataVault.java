@@ -45,7 +45,8 @@ public final class DataVault {
   private static final int MAX_BACKUPS = 30;
   private static final int MAX_DATA_BYTES = 8 * 1024 * 1024;
   private static final Pattern BACKUP_NAME =
-      Pattern.compile("^attendance-backup-\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}\\.json\\.gz$");
+      Pattern.compile(
+          "^attendance-backup-\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}(?:-\\d+)?\\.json\\.gz$");
 
   private DataVault() {}
 
@@ -145,7 +146,8 @@ public final class DataVault {
       for (File file : listBackupFiles(context)) {
         JSONObject item = new JSONObject();
         item.put("name", file.getName());
-        item.put("savedAt", file.lastModified());
+        long savedAt = timestampFromName(file.getName());
+        item.put("savedAt", savedAt > 0 ? savedAt : file.lastModified());
         item.put("size", file.length());
         result.put(item);
       }
@@ -169,6 +171,35 @@ public final class DataVault {
     }
   }
 
+  /**
+   * Добавляет готовую копию (например, старый JSON из «Загрузок») в приватное хранилище.
+   * Дата в имени сохраняется, но файл считается свежим, чтобы не удалиться сразу.
+   */
+  public static synchronized boolean importSnapshot(Context context, String json, long timestamp) {
+    if (parseValid(json) == null) return false;
+    try {
+      File dir = backupsDir(context);
+      String stamp = formatTime(timestamp > 0 ? timestamp : System.currentTimeMillis());
+      File target = new File(dir, BACKUP_PREFIX + stamp + BACKUP_SUFFIX);
+      int suffix = 1;
+      while (target.exists()) {
+        target = new File(dir, BACKUP_PREFIX + stamp + "-" + suffix + BACKUP_SUFFIX);
+        suffix += 1;
+      }
+      writeGzipAtomic(target, json.trim());
+      target.setLastModified(System.currentTimeMillis());
+      return true;
+    } catch (Exception error) {
+      Log.w(TAG, "Не удалось перенести копию в хранилище", error);
+      return false;
+    }
+  }
+
+  /** Удаляет лишние снимки, оставляя самые новые. */
+  public static synchronized void prune(Context context) {
+    pruneBackups(context);
+  }
+
   /** Удаляет старые снимки, сохраняя не больше {@link #MAX_BACKUPS} штук. */
   private static void pruneBackups(Context context) {
     List<File> backups = listBackupFiles(context);
@@ -186,7 +217,11 @@ public final class DataVault {
   private static void writeBackup(Context context, String text, boolean force) {
     try {
       List<File> backups = listBackupFiles(context);
-      long newest = backups.isEmpty() ? 0 : backups.get(0).lastModified();
+      long newest = 0;
+      for (File backup : backups) {
+        long stamp = timestampFromName(backup.getName());
+        if (stamp > newest) newest = stamp;
+      }
       long now = System.currentTimeMillis();
       if (!force && newest > 0 && now - newest < BACKUP_INTERVAL_MS) return;
 
@@ -257,11 +292,29 @@ public final class DataVault {
         new Comparator<File>() {
           @Override
           public int compare(File left, File right) {
-            int byTime = Long.compare(right.lastModified(), left.lastModified());
+            long leftTime = timestampFromName(left.getName());
+            long rightTime = timestampFromName(right.getName());
+            if (leftTime <= 0) leftTime = left.lastModified();
+            if (rightTime <= 0) rightTime = right.lastModified();
+            int byTime = Long.compare(rightTime, leftTime);
             return byTime != 0 ? byTime : right.getName().compareTo(left.getName());
           }
         });
     return files;
+  }
+
+  /** Дата снимка из имени файла: она не меняется при переносе старых копий. */
+  private static long timestampFromName(String name) {
+    if (name == null || name.length() < BACKUP_PREFIX.length() + 19) return 0;
+    String stamp = name.substring(BACKUP_PREFIX.length(), BACKUP_PREFIX.length() + 19);
+    try {
+      SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US);
+      format.setLenient(false);
+      Date date = format.parse(stamp);
+      return date == null ? 0 : date.getTime();
+    } catch (Exception error) {
+      return 0;
+    }
   }
 
   private static String readText(File file) {

@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
-import { CLASS_HOUR_PAIR_NUMBER, THEMES, WEEKDAYS } from '../constants';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
+import { ABSENCE_STATUSES, CLASS_HOUR_PAIR_NUMBER, STATUS_META, THEMES, WEEKDAYS } from '../constants';
+import type { AbsenceFilter } from '../absenceReport';
 import { useApp } from '../store';
 import {
   CLASS_HOUR_DEFAULT_TIMES,
@@ -41,6 +42,7 @@ import {
   minutesFromHHMM,
   pad2,
   plural,
+  shareTextFile,
   todayISO,
   weekdayNumber,
 } from '../utils';
@@ -59,6 +61,11 @@ import {
 } from '../reliability';
 import { Icon } from '../components/Icon';
 import { PageHeader } from '../components/PageHeader';
+import {
+  AbsencePrintSheet,
+  type AbsenceEntry,
+} from '../components/ReportAttendanceModal';
+import { ReportPrintSheet } from '../components/ReportPrintSheet';
 
 type NotificationState = NotificationPermission | 'unsupported';
 
@@ -123,6 +130,12 @@ export function SettingsScreen() {
     listNativeBackups(),
   );
   const [showAllBackups, setShowAllBackups] = useState(false);
+  const [printGroupId, setPrintGroupId] = useState(
+    () => data.settings.activeGroupId || data.groups[0]?.id || '',
+  );
+  const [printMonth, setPrintMonth] = useState(() => todayISO().slice(0, 7));
+  const [printFilter, setPrintFilter] = useState<AbsenceFilter>('all');
+  const [printMode, setPrintMode] = useState<'report' | 'absences' | null>(null);
 
   const refreshVault = () => {
     setVaultInfo(getNativeVaultInfo());
@@ -169,6 +182,57 @@ export function SettingsScreen() {
       document.removeEventListener('visibilitychange', refresh);
     };
   }, [isAndroidApp]);
+
+  const printGroup =
+    data.groups.find((group) => group.id === printGroupId) ?? data.groups[0];
+
+  const printRecords = useMemo(() => {
+    if (!printGroup) return [];
+    return data.attendance
+      .filter(
+        (record) =>
+          record.groupId === printGroup.id && record.date.startsWith(printMonth),
+      )
+      .sort(
+        (a, b) =>
+          a.date.localeCompare(b.date) ||
+          comparePairNumbers(a.pairNumber, b.pairNumber),
+      );
+  }, [data.attendance, printGroup, printMonth]);
+
+  const printAbsenceEntries = useMemo<AbsenceEntry[]>(() => {
+    const students = new Map(data.students.map((student) => [student.id, student]));
+    return printRecords.flatMap((record) => {
+      if (!ABSENCE_STATUSES.includes(record.status)) return [];
+      const student = students.get(record.studentId);
+      return student ? [{ record, student }] : [];
+    });
+  }, [data.students, printRecords]);
+
+  const printVisibleAbsences =
+    printFilter === 'all'
+      ? printAbsenceEntries
+      : printAbsenceEntries.filter((entry) => entry.record.status === printFilter);
+
+  const handlePrint = (mode: 'report' | 'absences') => {
+    if (!printGroup) {
+      notify('Нет группы для печати.', 'info');
+      return;
+    }
+    if (mode === 'report' && printRecords.length === 0) {
+      notify('За выбранный месяц нет отметок.', 'info');
+      return;
+    }
+    if (mode === 'absences' && printVisibleAbsences.length === 0) {
+      notify('За выбранный месяц нет пропусков.', 'info');
+      return;
+    }
+    setPrintMode(mode);
+    window.setTimeout(() => {
+      if (window.AndroidApp?.printPage) window.AndroidApp.printPage();
+      else window.print();
+    }, 120);
+  };
 
   const updateReminderTime = (index: number, value: string) => {
     setReminders((current) => ({
@@ -328,23 +392,61 @@ export function SettingsScreen() {
   };
 
   const handleExport = () => {
+    if (isAndroidApp && hasNativeVault()) {
+      if (saveNativeBackupNow(data)) {
+        refreshVault();
+        notify('Копия сохранена в приложении');
+      } else {
+        notify('Не удалось сохранить копию', 'error');
+      }
+      return;
+    }
     downloadTextFile(
       `Посещаемость_бэкап_${todayISO()}.json`,
       exportBackupFile(data),
       'application/json;charset=utf-8',
     );
+    notify('Файл резервной копии сохранён', 'success');
   };
 
-  const handleVaultBackupNow = () => {
-    if (!isAndroidApp) {
-      notify('Копии на телефоне доступны только в установленном APK', 'info');
+  const handleShareBackup = async () => {
+    try {
+      const result = await shareTextFile(
+        `Посещаемость_бэкап_${todayISO()}.json`,
+        exportBackupFile(data),
+        'application/json',
+        'Резервная копия посещаемости',
+      );
+      if (result === 'downloaded') {
+        notify('Файл сохранён в «Загрузки»', 'success');
+      }
+    } catch {
+      notify('Не удалось отправить файл', 'error');
+    }
+  };
+
+  const handleMigrateLegacyBackups = () => {
+    const bridge = window.AndroidApp;
+    if (!bridge?.migrateLegacyBackups) {
+      notify('Перенос копий доступен в установленном приложении', 'info');
       return;
     }
-    if (saveNativeBackupNow(data)) {
+    try {
+      const result = JSON.parse(bridge.migrateLegacyBackups()) as {
+        found?: number;
+        moved?: number;
+        failed?: number;
+      };
       refreshVault();
-      notify('Копия сохранена на телефоне');
-    } else {
-      notify('Не удалось сохранить копию на телефоне', 'error');
+      if ((result.moved ?? 0) > 0) {
+        notify(`Перенесено копий: ${result.moved}`, 'success');
+      } else if ((result.found ?? 0) === 0) {
+        notify('В «Загрузках» нет старых копий', 'info');
+      } else {
+        notify('Не удалось перенести часть копий', 'error');
+      }
+    } catch {
+      notify('Не удалось проверить «Загрузки»', 'error');
     }
   };
 
@@ -733,7 +835,7 @@ export function SettingsScreen() {
   }
 
   return (
-    <div className="screen settings-screen">
+    <div className={`screen settings-screen${printMode ? ' is-printing-sheet' : ''}`}>
       <PageHeader title="Настройки" subtitle="Оформление, расписание, напоминания и данные" />
 
       <nav className="settings-nav no-print" aria-label="Разделы настроек">
@@ -741,7 +843,6 @@ export function SettingsScreen() {
           ['settings-theme', 'Тема'],
           ['settings-reminders', 'Напоминания'],
           ['settings-schedule', 'Расписание'],
-          ['settings-updates', 'Обновления'],
           ['settings-backup', 'Данные'],
         ].map(([id, label]) => (
           <button
@@ -1163,94 +1264,258 @@ export function SettingsScreen() {
         </div>
       </section>
 
-      <section className="card update-settings-card" id="settings-updates">
-        <div className="section-head">
-          <h2>
-            <Icon name="arrow-down" size={20} />
-            Обновления приложения
-          </h2>
-          <span className="update-version-badge">v{appVersion}</span>
-        </div>
-        <p className="muted">
-          OTA-обновление APK: приложение само проверяет сервер, скачивает новую версию,
-          проверяет SHA-256 и подпись, затем открывает системный установщик.
-        </p>
-        <div className="update-current">
-          <div>
-            <strong>Установленная версия</strong>
-            <span>Обновление не удаляет группы, студентов и историю</span>
-          </div>
-        </div>
+      <details className="card advanced-settings" id="settings-advanced">
+        <summary className="advanced-head">
+          <span className="advanced-head-main">
+            <span className="advanced-head-icon" aria-hidden="true">
+              <Icon name="settings" size={20} />
+            </span>
+            <span className="advanced-head-text">
+              <strong>Дополнительно</strong>
+              <small>Обновления, печать и копии внутри приложения</small>
+            </span>
+          </span>
+          <span className="advanced-chevron" aria-hidden="true">
+            <Icon name="chevron-down" size={18} />
+          </span>
+        </summary>
+        <div className="advanced-body">
+          <section className="advanced-block" id="settings-updates">
+            <div className="section-head">
+              <h2>
+                <Icon name="arrow-down" size={20} />
+                Обновления приложения
+              </h2>
+              <span className="update-version-badge">v{appVersion}</span>
+            </div>
+            <p className="muted">
+              OTA-обновление APK: приложение само проверяет сервер, скачивает новую версию,
+              проверяет SHA-256 и подпись, затем открывает системный установщик.
+            </p>
+            <div className="update-current">
+              <div>
+                <strong>Установленная версия</strong>
+                <span>Обновление не удаляет группы, студентов и историю</span>
+              </div>
+            </div>
 
-        {isAndroidApp ? (
-          <>
-            <label className="field update-url-field">
-              <span>Адрес update.json</span>
-              <input
-                type="url"
-                className="input"
-                inputMode="url"
-                autoComplete="off"
-                spellCheck={false}
-                placeholder="https://…/update.json"
-                value={updateUrl}
-                onChange={(event) => setUpdateUrl(event.target.value)}
-              />
-            </label>
-            <label className="switch-row">
-              <span>
-                <strong>Проверять при запуске</strong>
-                <small>Не чаще одного раза в 6 часов, если адрес сохранён</small>
-              </span>
-              <span className="switch">
+            {isAndroidApp ? (
+              <>
+                <label className="field update-url-field">
+                  <span>Адрес update.json</span>
+                  <input
+                    type="url"
+                    className="input"
+                    inputMode="url"
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder="https://…/update.json"
+                    value={updateUrl}
+                    onChange={(event) => setUpdateUrl(event.target.value)}
+                  />
+                </label>
+                <label className="switch-row">
+                  <span>
+                    <strong>Проверять при запуске</strong>
+                    <small>Не чаще одного раза в 6 часов, если адрес сохранён</small>
+                  </span>
+                  <span className="switch">
+                    <input
+                      type="checkbox"
+                      checked={autoUpdateCheck}
+                      onChange={(event) => setAutoUpdateCheck(event.target.checked)}
+                    />
+                    <span className="switch-track" />
+                  </span>
+                </label>
+                <div className="settings-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={handleSaveUpdateSettings}
+                  >
+                    Сохранить адрес
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleCheckUpdate}
+                    disabled={ota.state === 'checking' || ota.state === 'downloading'}
+                  >
+                    <Icon name="arrow-down" />
+                    {ota.state === 'checking' ? 'Проверяем…' : 'Проверить обновления'}
+                  </button>
+                </div>
+                {updateStatus}
+                <div className="inline-note">
+                  <Icon name="info" size={18} />
+                  <span>
+                    Для локальной сети подойдёт HTTP, для интернета — только HTTPS. Скачанный APK
+                    принимается, если совпали имя пакета, версия, SHA-256 и подпись установленного
+                    приложения. Android может попросить разрешение «Установка неизвестных
+                    приложений» — это системная защита.
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div className="inline-note">
+                <Icon name="info" size={18} />
+                <span>
+                  В браузере OTA-обновление APK недоступно: новая версия открывается с сайта или
+                  устанавливается поверх старого APK. Настройка OTA появляется в установленном
+                  приложении.
+                </span>
+              </div>
+            )}
+          </section>
+
+          <section className="advanced-block" id="settings-print">
+            <div className="section-head">
+              <h2>
+                <Icon name="print" size={20} />
+                Печать
+              </h2>
+            </div>
+            <p className="field-hint">
+              Редко используемая функция. A4, альбомная ориентация. Выберите группу и
+              месяц.
+            </p>
+            <div className="print-settings-fields">
+              <label className="field">
+                <span>Группа</span>
+                <select
+                  className="select"
+                  value={printGroup?.id ?? ''}
+                  onChange={(event) => setPrintGroupId(event.target.value)}
+                >
+                  {data.groups.map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>Месяц</span>
                 <input
-                  type="checkbox"
-                  checked={autoUpdateCheck}
-                  onChange={(event) => setAutoUpdateCheck(event.target.checked)}
+                  type="month"
+                  className="input"
+                  value={printMonth}
+                  onChange={(event) =>
+                    setPrintMonth(event.target.value || todayISO().slice(0, 7))
+                  }
                 />
-                <span className="switch-track" />
-              </span>
-            </label>
-            <div className="settings-actions">
+              </label>
+              <label className="field">
+                <span>Причина пропусков</span>
+                <select
+                  className="select"
+                  value={printFilter}
+                  onChange={(event) =>
+                    setPrintFilter(event.target.value as AbsenceFilter)
+                  }
+                >
+                  <option value="all">Все пропуски</option>
+                  {ABSENCE_STATUSES.map((status) => (
+                    <option key={status} value={status}>
+                      {STATUS_META[status].label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="settings-actions print-settings-actions">
               <button
                 type="button"
                 className="btn btn-secondary"
-                onClick={handleSaveUpdateSettings}
+                onClick={() => handlePrint('report')}
+                disabled={printRecords.length === 0}
               >
-                Сохранить адрес
+                <Icon name="print" />
+                Печать ведомости
               </button>
               <button
                 type="button"
-                className="btn btn-primary"
-                onClick={handleCheckUpdate}
-                disabled={ota.state === 'checking' || ota.state === 'downloading'}
+                className="btn btn-secondary"
+                onClick={() => handlePrint('absences')}
+                disabled={printVisibleAbsences.length === 0}
               >
-                <Icon name="arrow-down" />
-                {ota.state === 'checking' ? 'Проверяем…' : 'Проверить обновления'}
+                <Icon name="print" />
+                Печать пропусков
               </button>
             </div>
-            {updateStatus}
-            <div className="inline-note">
-              <Icon name="info" size={18} />
-              <span>
-                Для локальной сети подойдёт HTTP, для интернета — только HTTPS. Скачанный APK
-                принимается, если совпали имя пакета, версия, SHA-256 и подпись установленного
-                приложения. Android может попросить разрешение «Установка неизвестных
-                приложений» — это системная защита.
-              </span>
-            </div>
-          </>
-        ) : (
-          <div className="inline-note">
-            <Icon name="info" size={18} />
-            <span>
-              В браузере OTA-обновление APK недоступно: новая версия открывается с сайта или
-              устанавливается поверх старого APK. Настройка OTA появляется в установленном
-              приложении.
-            </span>
-          </div>
-        )}
-      </section>
+            <p className="field-hint">
+              {printRecords.length === 0
+                ? 'За выбранный месяц отметок нет.'
+                : printFilter === 'all'
+                  ? `Отметок: ${printRecords.length} · пропусков: ${printAbsenceEntries.length}.`
+                  : `Отметок: ${printRecords.length} · по фильтру: ${printVisibleAbsences.length}.`}
+            </p>
+          </section>
+
+          {isAndroidApp && hasNativeVault() ? (
+            <section className="advanced-block advanced-vault" id="settings-vault">
+              <div className="section-head">
+                <h2>
+                  <Icon name="archive" size={20} />
+                  Копии в приложении
+                </h2>
+                {vaultInfo && vaultInfo.backupCount > 0 ? (
+                  <span className="pill">{vaultInfo.backupCount}</span>
+                ) : null}
+              </div>
+              <p className="muted">
+                {vaultInfo?.available && vaultInfo.savedAt
+                  ? `Последняя: ${formatBackupStamp(vaultInfo.savedAt)}`
+                  : 'Пока нет сохранённой копии'}
+              </p>
+              <p className="field-hint">
+                Копия сохраняется автоматически при изменениях. Если данные пропадут после
+                обновления, их можно восстановить из этой копии.
+              </p>
+              {vaultBackups.length > 0 ? (
+                <div className="device-backup-list">
+                  {(showAllBackups ? vaultBackups : vaultBackups.slice(0, 5)).map((entry) => (
+                    <div className="device-backup-row" key={entry.name}>
+                      <span className="device-backup-meta">
+                        <strong>{formatBackupStamp(entry.savedAt)}</strong>
+                        <span className="muted">{formatBytes(entry.size)}</span>
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => handleVaultRestore(entry)}
+                      >
+                        Восстановить
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              {vaultBackups.length > 5 ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setShowAllBackups((value) => !value)}
+                >
+                  {showAllBackups ? 'Свернуть' : `Показать все (${vaultBackups.length})`}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={handleMigrateLegacyBackups}
+              >
+                <Icon name="archive" size={16} />
+                Перенести копии из «Загрузок»
+              </button>
+              <p className="field-hint">
+                Старые JSON-файлы переместятся в приложение и исчезнут из проводника.
+              </p>
+            </section>
+          ) : null}
+        </div>
+      </details>
 
       <section className="card" id="settings-backup">
         <div className="section-head">
@@ -1260,13 +1525,22 @@ export function SettingsScreen() {
           </h2>
         </div>
         <p className="muted">
-          Все данные хранятся только на этом устройстве. Перед сменой телефона или очисткой
-          данных сохраните копию.
+          {isAndroidApp && hasNativeVault()
+            ? 'Копии хранятся внутри приложения и не появляются в «Загрузках».'
+            : 'Скачайте файл резервной копии или отправьте его на другое устройство.'}
         </p>
-        <div className="settings-actions">
-          <button type="button" className="btn btn-secondary" onClick={handleExport}>
-            <Icon name="download" />
-            Экспорт JSON
+        <div className="settings-actions backup-actions">
+          <button type="button" className="btn btn-primary" onClick={handleExport}>
+            <Icon name={isAndroidApp && hasNativeVault() ? 'archive' : 'download'} />
+            {isAndroidApp && hasNativeVault() ? 'Сохранить в приложении' : 'Скачать файл'}
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => void handleShareBackup()}
+          >
+            <Icon name="share" />
+            Отправить файл
           </button>
           <button
             type="button"
@@ -1285,67 +1559,9 @@ export function SettingsScreen() {
           />
         </div>
         <p className="field-hint">
-          Резервная копия заменит все текущие группы, студентов, отметки и настройки данными из
-          файла. Если выбрать файл группы, он добавится отдельной группой без замены данных.
-          Сейчас в приложении отметок: {data.attendance.length}.
+          «Отправить файл» — перенос на другой телефон. Импорт заменит текущие данные;
+          файл группы добавится отдельной группой.
         </p>
-        {isAndroidApp && hasNativeVault() ? (
-          <div className="device-backups">
-            <div className="device-backups-head">
-              <div>
-                <strong>Копии на телефоне</strong>
-                <span className="muted">
-                  {vaultInfo?.available && vaultInfo.savedAt
-                    ? `Последняя: ${formatBackupStamp(vaultInfo.savedAt)}`
-                    : 'Пока нет сохранённой копии'}
-                </span>
-              </div>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={handleVaultBackupNow}
-              >
-                <Icon name="download" size={16} />
-                Сохранить
-              </button>
-            </div>
-            <p className="field-hint">
-              Приложение автоматически сохраняет копию при каждом изменении. Если данные
-              приложения пропадут после обновления, они восстановятся из этой копии.
-              {vaultInfo && vaultInfo.backupCount > 0
-                ? ` Снимков: ${vaultInfo.backupCount}.`
-                : ''}
-            </p>
-            {vaultBackups.length > 0 ? (
-              <div className="device-backup-list">
-                {(showAllBackups ? vaultBackups : vaultBackups.slice(0, 5)).map((entry) => (
-                  <div className="device-backup-row" key={entry.name}>
-                    <span className="device-backup-meta">
-                      <strong>{formatBackupStamp(entry.savedAt)}</strong>
-                      <span className="muted">{formatBytes(entry.size)}</span>
-                    </span>
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => handleVaultRestore(entry)}
-                    >
-                      Восстановить
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            {vaultBackups.length > 5 ? (
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={() => setShowAllBackups((value) => !value)}
-              >
-                {showAllBackups ? 'Свернуть' : `Показать все (${vaultBackups.length})`}
-              </button>
-            ) : null}
-          </div>
-        ) : null}
       </section>
 
       <section className="card">
@@ -1412,6 +1628,24 @@ export function SettingsScreen() {
           </div>
         )}
       </section>
+
+      {printMode === 'report' && printGroup ? (
+        <ReportPrintSheet
+          group={printGroup}
+          students={data.students}
+          records={printRecords}
+          month={printMonth}
+        />
+      ) : null}
+
+      {printMode === 'absences' && printGroup ? (
+        <AbsencePrintSheet
+          entries={printVisibleAbsences}
+          groupName={printGroup.name}
+          month={printMonth}
+          filter={printFilter}
+        />
+      ) : null}
     </div>
   );
 }

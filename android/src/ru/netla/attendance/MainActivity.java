@@ -109,7 +109,7 @@ public class MainActivity extends Activity {
               try {
                 startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
               } catch (Exception ignored) {
-                // РќРµС‚ РїСЂРёР»РѕР¶РµРЅРёСЏ, РєРѕС‚РѕСЂРѕРµ РјРѕР¶РµС‚ РѕС‚РєСЂС‹С‚СЊ СЃСЃС‹Р»РєСѓ.
+                // Нет приложения, которое может открыть ссылку.
               }
             }
             return true;
@@ -140,7 +140,7 @@ public class MainActivity extends Activity {
               fileChooserCallback = null;
               Toast.makeText(
                       MainActivity.this,
-                      "РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РєСЂС‹С‚СЊ РІС‹Р±РѕСЂ С„Р°Р№Р»Р°",
+                      "Не удалось открыть выбор файла",
                       Toast.LENGTH_SHORT)
                   .show();
               return false;
@@ -165,7 +165,7 @@ public class MainActivity extends Activity {
     applySystemBars(background, dark);
   }
 
-  /** РљСЂР°СЃРёС‚ СЃРёСЃС‚РµРјРЅС‹Рµ РїР°РЅРµР»Рё РІ С„РѕРЅ С‚РµРєСѓС‰РµР№ С‚РµРјС‹, С‡С‚РѕР±С‹ РЅРµ Р±С‹Р»Рѕ Р±РµР»С‹С… РїРѕР»РѕСЃ. */
+  /** Красит системные панели в фон текущей темы, чтобы не было белых полос. */
   private void applySystemBars(String background, boolean dark) {
     try {
       int color;
@@ -199,7 +199,7 @@ public class MainActivity extends Activity {
         decor.setSystemUiVisibility(flags);
       }
     } catch (Exception ignored) {
-      // РћС„РѕСЂРјР»РµРЅРёРµ СЃРёСЃС‚РµРјРЅС‹С… РїР°РЅРµР»РµР№ РЅРµ РєСЂРёС‚РёС‡РЅРѕ РґР»СЏ СЂР°Р±РѕС‚С‹ РїСЂРёР»РѕР¶РµРЅРёСЏ.
+      // Оформление системных панелей не критично для работы приложения.
     }
   }
 
@@ -342,6 +342,12 @@ public class MainActivity extends Activity {
       return DataVault.readBackup(getApplicationContext(), name);
     }
 
+    /** Переносит старые JSON-копии из «Загрузок» в приватное хранилище. */
+    @JavascriptInterface
+    public String migrateLegacyBackups() {
+      return LegacyBackupMigration.run(getApplicationContext());
+    }
+
     @JavascriptInterface
     public void saveFile(String filename, String mime, String content) {
       saveTextFile(filename, mime, content);
@@ -357,7 +363,7 @@ public class MainActivity extends Activity {
       showNotification(title, body);
     }
 
-    /** РЎРѕС…СЂР°РЅСЏРµС‚ РЅР°СЃС‚СЂРѕР№РєРё РЅР°РїРѕРјРёРЅР°РЅРёР№ Рё РїР»Р°РЅРёСЂСѓРµС‚ СЃРёСЃС‚РµРјРЅС‹Рµ Р±СѓРґРёР»СЊРЅРёРєРё Android. */
+    /** Сохраняет настройки напоминаний и планирует системные будильники Android. */
     @JavascriptInterface
     public void scheduleReminders(
         boolean enabled, String timesJson, String weekdaysJson, String groupName) {
@@ -365,7 +371,7 @@ public class MainActivity extends Activity {
           getApplicationContext(), enabled, timesJson, weekdaysJson, groupName);
     }
 
-    /** РЎРёРЅС…СЂРѕРЅРёР·РёСЂСѓРµС‚ С†РІРµС‚ СЃС‚Р°С‚СѓСЃ-Р±Р°СЂР° Рё РїР°РЅРµР»Рё РЅР°РІРёРіР°С†РёРё СЃ С‚РµРјРѕР№ РїСЂРёР»РѕР¶РµРЅРёСЏ. */
+    /** Синхронизирует цвет статус-бара и панели навигации с темой приложения. */
     @JavascriptInterface
     public void setSystemBars(String background, boolean dark) {
       runOnUiThread(
@@ -387,7 +393,7 @@ public class MainActivity extends Activity {
             if (webView == null) return;
             try {
               PrintManager printManager = (PrintManager) getSystemService(PRINT_SERVICE);
-              String jobName = "Р’РµРґРѕРјРѕСЃС‚СЊ РїРѕСЃРµС‰Р°РµРјРѕСЃС‚Рё";
+              String jobName = "Ведомость посещаемости";
               PrintAttributes attributes =
                   new PrintAttributes.Builder()
                       .setMediaSize(PrintAttributes.MediaSize.ISO_A4.asLandscape())
@@ -398,7 +404,7 @@ public class MainActivity extends Activity {
             } catch (Exception error) {
               Toast.makeText(
                       MainActivity.this,
-                      "РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РєСЂС‹С‚СЊ РїРµС‡Р°С‚СЊ: " + error.getMessage(),
+                      "Не удалось открыть печать: " + error.getMessage(),
                       Toast.LENGTH_LONG)
                   .show();
             }
@@ -427,7 +433,7 @@ public class MainActivity extends Activity {
           });
     }
 
-    /** РљРѕСЂРѕС‚РєР°СЏ РІРёР±СЂР°С†РёСЏ РґР»СЏ С‚Р°РєС‚РёР»СЊРЅРѕРіРѕ РѕС‚РєР»РёРєР° РїРµСЂРµС‚Р°СЃРєРёРІР°РЅРёСЏ РЅРёР¶РЅРµРіРѕ РјРµРЅСЋ. */
+    /** Короткая вибрация для тактильного отклика перетаскивания нижнего меню. */
     @JavascriptInterface
     public void vibrate(int milliseconds) {
       try {
@@ -436,7 +442,7 @@ public class MainActivity extends Activity {
           vibrator.vibrate(Math.max(1, Math.min(40, milliseconds)));
         }
       } catch (Exception ignored) {
-        // Р’РёР±СЂР°С†РёСЏ РЅРµ РєСЂРёС‚РёС‡РЅР°.
+        // Вибрация не критична.
       }
     }
 
@@ -524,7 +530,7 @@ public class MainActivity extends Activity {
     }
   }
 
-  /** РџРµСЂРµРґР°С‘С‚ СЃРѕСЃС‚РѕСЏРЅРёРµ OTA-Р·Р°РіСЂСѓР·С‡РёРєР° РІ JavaScript. */
+  /** Передаёт состояние OTA-загрузчика в JavaScript. */
   private void emitOtaState(String json) {
     runOnUiThread(
         () -> {
@@ -541,13 +547,13 @@ public class MainActivity extends Activity {
           try {
             String safeName =
                 filename == null || filename.trim().isEmpty()
-                    ? "РџРѕСЃРµС‰Р°РµРјРѕСЃС‚СЊ.csv"
+                    ? "Посещаемость.csv"
                     : filename.replaceAll("[\\\\/:*?\"<>|]", "_");
             String safeMime =
                 mime == null || mime.trim().isEmpty() ? "text/csv" : mime;
             File dir = new File(getCacheDir(), "share");
             if (!dir.exists() && !dir.mkdirs()) {
-              throw new IllegalStateException("РЅРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ РїР°РїРєСѓ");
+              throw new IllegalStateException("не удалось создать папку");
             }
             File file = new File(dir, safeName);
             byte[] bytes =
@@ -564,14 +570,14 @@ public class MainActivity extends Activity {
             send.setClipData(ClipData.newRawUri(safeName, uri));
             send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
 
-            Intent chooser = Intent.createChooser(send, "РћС‚РїСЂР°РІРёС‚СЊ РѕС‚С‡С‘С‚");
+            Intent chooser = Intent.createChooser(send, "Отправить отчёт");
             chooser.addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
             startActivity(chooser);
           } catch (Exception error) {
             Toast.makeText(
                     MainActivity.this,
-                    "РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РїСЂР°РІРёС‚СЊ С„Р°Р№Р»: " + error.getMessage(),
+                    "Не удалось отправить файл: " + error.getMessage(),
                     Toast.LENGTH_LONG)
                 .show();
           }
@@ -583,7 +589,7 @@ public class MainActivity extends Activity {
         () -> {
           String safeName =
               filename == null || filename.trim().isEmpty()
-                  ? "РџРѕСЃРµС‰Р°РµРјРѕСЃС‚СЊ.txt"
+                  ? "Посещаемость.txt"
                   : filename.replaceAll("[\\\\/:*?\"<>|]", "_");
           String safeMime = mime == null || mime.trim().isEmpty() ? "text/plain" : mime;
           byte[] bytes =
@@ -596,31 +602,31 @@ public class MainActivity extends Activity {
               values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
               Uri uri =
                   getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
-              if (uri == null) throw new IllegalStateException("РЅРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ С„Р°Р№Р»");
+              if (uri == null) throw new IllegalStateException("не удалось создать файл");
               try (OutputStream out = getContentResolver().openOutputStream(uri)) {
-                if (out == null) throw new IllegalStateException("РЅРµС‚ РґРѕСЃС‚СѓРїР° Рє С„Р°Р№Р»Сѓ");
+                if (out == null) throw new IllegalStateException("нет доступа к файлу");
                 out.write(bytes);
               }
               Toast.makeText(
-                      this, "РЎРѕС…СЂР°РЅРµРЅРѕ РІ В«Р—Р°РіСЂСѓР·РєРёВ»: " + safeName, Toast.LENGTH_LONG)
+                      this, "Сохранено в «Загрузки»: " + safeName, Toast.LENGTH_LONG)
                   .show();
             } else {
               File dir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
               if (dir == null) dir = getFilesDir();
               if (!dir.exists() && !dir.mkdirs()) {
-                throw new IllegalStateException("РЅРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ РїР°РїРєСѓ");
+                throw new IllegalStateException("не удалось создать папку");
               }
               File file = new File(dir, safeName);
               try (FileOutputStream out = new FileOutputStream(file)) {
                 out.write(bytes);
               }
-              Toast.makeText(this, "РЎРѕС…СЂР°РЅРµРЅРѕ: " + file.getAbsolutePath(), Toast.LENGTH_LONG)
+              Toast.makeText(this, "Сохранено: " + file.getAbsolutePath(), Toast.LENGTH_LONG)
                   .show();
             }
           } catch (Exception error) {
             Toast.makeText(
                     this,
-                    "РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ С„Р°Р№Р»: " + error.getMessage(),
+                    "Не удалось сохранить файл: " + error.getMessage(),
                     Toast.LENGTH_LONG)
                 .show();
           }
