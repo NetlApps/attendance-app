@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import {
   absenceCsvFileName,
   buildAbsencesCsv,
@@ -33,6 +33,7 @@ import {
   StudentAttendanceModal,
   type AbsenceEntry,
 } from '../components/ReportAttendanceModal';
+import { ReportStudentDetail } from '../components/ReportStudentDetail';
 import { StatusChip } from '../components/StatusChip';
 
 interface ReportsScreenProps {
@@ -59,6 +60,74 @@ interface EditingCell {
   record: Attendance;
 }
 
+interface ReportDay {
+  date: string;
+  pairs: number[];
+}
+
+interface CompactPart {
+  symbol: string;
+  status: Status | null;
+}
+
+/** Обозначения для компактного вида: один символ на пару. */
+const COMPACT_SYMBOLS: Record<Status, string> = {
+  present: '+',
+  absent: '-',
+  sick: 'Б',
+  excused: 'У',
+  late: 'О',
+};
+
+function buildCompactParts(
+  day: ReportDay,
+  records: Map<string, Attendance>,
+  studentId: string,
+): CompactPart[] {
+  const parts = day.pairs.map((pairNumber) => {
+    const record = records.get(`${studentId}|${day.date}|${pairNumber}`);
+    return record
+      ? { symbol: COMPACT_SYMBOLS[record.status], status: record.status }
+      : { symbol: '—', status: null };
+  });
+
+  const firstStatus = parts[0]?.status ?? null;
+  const allMissing = parts.every((part) => part.status === null);
+  if (allMissing) return [{ symbol: '—', status: null }];
+
+  const allSame =
+    firstStatus !== null && parts.every((part) => part.status === firstStatus);
+  if (allSame) {
+    return [{ symbol: COMPACT_SYMBOLS[firstStatus], status: firstStatus }];
+  }
+  return parts;
+}
+
+function compactDayLabel(day: ReportDay, parts: CompactPart[]): string {
+  const dateLabel = formatDate(day.date);
+  const first = parts[0];
+  if (!first) return dateLabel;
+
+  if (parts.length === 1) {
+    const statusLabel = first.status
+      ? STATUS_META[first.status].label
+      : 'нет отметки';
+    return day.pairs.length > 1
+      ? `${dateLabel}: все пары — ${statusLabel}`
+      : `${dateLabel}: ${statusLabel}`;
+  }
+
+  return `${dateLabel}: ${parts
+    .map((part, index) => {
+      const pairLabel = slotShortName(day.pairs[index]);
+      const statusLabel = part.status
+        ? STATUS_META[part.status].label
+        : 'нет отметки';
+      return `${pairLabel} — ${statusLabel}`;
+    })
+    .join(', ')}`;
+}
+
 export function ReportsScreen({ onMark, onGroups }: ReportsScreenProps) {
   const { data, activeGroup, notify } = useApp();
   const [groupId, setGroupId] = useState(
@@ -68,6 +137,10 @@ export function ReportsScreen({ onMark, onGroups }: ReportsScreenProps) {
   const [editing, setEditing] = useState<EditingCell | null>(null);
   const [detailStudentId, setDetailStudentId] = useState<string | null>(null);
   const [absencesOpen, setAbsencesOpen] = useState(false);
+  const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null);
+  const [compactView, setCompactView] = useState(false);
+  const [groupMenuOpen, setGroupMenuOpen] = useState(false);
+  const groupPickerRef = useRef<HTMLDivElement | null>(null);
 
   const group =
     data.groups.find((candidate) => candidate.id === groupId) ?? data.groups[0];
@@ -75,7 +148,29 @@ export function ReportsScreen({ onMark, onGroups }: ReportsScreenProps) {
   useEffect(() => {
     setDetailStudentId(null);
     setAbsencesOpen(false);
+    setExpandedStudentId(null);
   }, [group?.id, month]);
+
+  useEffect(() => {
+    if (!groupMenuOpen) return;
+    const closeOnOutside = (event: PointerEvent) => {
+      if (
+        groupPickerRef.current &&
+        !groupPickerRef.current.contains(event.target as Node)
+      ) {
+        setGroupMenuOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setGroupMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [groupMenuOpen]);
 
   const monthRecords = useMemo(() => {
     if (!group) return [];
@@ -102,6 +197,19 @@ export function ReportsScreen({ onMark, onGroups }: ReportsScreenProps) {
     }
     return result;
   }, [monthRecords]);
+
+  const days = useMemo<ReportDay[]>(() => {
+    const map = new Map<string, number[]>();
+    for (const column of columns) {
+      const pairs = map.get(column.date) ?? [];
+      pairs.push(column.pairNumber);
+      map.set(column.date, pairs);
+    }
+    return [...map.entries()].map(([date, pairs]) => ({
+      date,
+      pairs: [...pairs].sort(comparePairNumbers),
+    }));
+  }, [columns]);
 
   const recordLookup = useMemo(() => {
     const map = new Map<string, Attendance>();
@@ -260,20 +368,51 @@ export function ReportsScreen({ onMark, onGroups }: ReportsScreenProps) {
 
       <section className="card report-filters no-print">
         <div className="report-filter-grid">
-          <label className="field">
+          <div className="field">
             <span>Группа</span>
-            <select
-              className="select"
-              value={group.id}
-              onChange={(event) => setGroupId(event.target.value)}
-            >
-              {data.groups.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.name}
-                </option>
-              ))}
-            </select>
-          </label>
+            <div className="report-group-picker" ref={groupPickerRef}>
+              <button
+                type="button"
+                className="report-group-trigger"
+                onClick={() => setGroupMenuOpen((open) => !open)}
+                aria-haspopup="listbox"
+                aria-expanded={groupMenuOpen}
+                aria-controls="report-group-menu"
+                aria-label={`Группа: ${group.name}. ${groupMenuOpen ? 'Свернуть список' : 'Развернуть список'}`}
+              >
+                <span className="report-group-trigger-name">{group.name}</span>
+                <Icon name="chevron-down" size={18} />
+              </button>
+              {groupMenuOpen && (
+                <div
+                  className="report-group-menu"
+                  id="report-group-menu"
+                  role="listbox"
+                  aria-label="Выберите группу"
+                >
+                  {data.groups.map((candidate) => {
+                    const isSelected = candidate.id === group.id;
+                    return (
+                      <button
+                        key={candidate.id}
+                        type="button"
+                        className={`report-group-option${isSelected ? ' is-selected' : ''}`}
+                        role="option"
+                        aria-selected={isSelected}
+                        onClick={() => {
+                          setGroupId(candidate.id);
+                          setGroupMenuOpen(false);
+                        }}
+                      >
+                        <span>{candidate.name}</span>
+                        {isSelected && <Icon name="check" size={16} />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
           <label className="field">
             <span>Месяц</span>
             <input
@@ -372,18 +511,48 @@ export function ReportsScreen({ onMark, onGroups }: ReportsScreenProps) {
             </span>
           </div>
 
+          <div className="report-view-bar no-print">
+            <span className="report-view-label">Вид отчёта</span>
+            <div className="report-view-switch" role="group" aria-label="Вид отчёта">
+              <button
+                type="button"
+                className={!compactView ? 'is-active' : ''}
+                aria-pressed={!compactView}
+                onClick={() => setCompactView(false)}
+              >
+                По парам
+              </button>
+              <button
+                type="button"
+                className={compactView ? 'is-active' : ''}
+                aria-pressed={compactView}
+                onClick={() => setCompactView(true)}
+              >
+                Компактно
+              </button>
+            </div>
+          </div>
+
           <div className="report-table-wrap">
-            <table className="report-table">
+            <table className={`report-table${compactView ? ' report-table-compact' : ''}`}>
               <thead>
                 <tr>
                   <th className="report-name-col">№ / Студент</th>
-                  {columns.map((column) => (
-                    <th key={column.key} className="report-date-col">
-                      <span>{formatDateShort(column.date)}</span>
-                      <small>{weekdayShort(column.date)}</small>
-                      <em>{slotShortName(column.pairNumber)}</em>
-                    </th>
-                  ))}
+                  {compactView
+                    ? days.map((day) => (
+                        <th key={day.date} className="report-date-col report-compact-col">
+                          <span>{formatDateShort(day.date)}</span>
+                          <small>{weekdayShort(day.date)}</small>
+                          <em>{day.pairs.length} п.</em>
+                        </th>
+                      ))
+                    : columns.map((column) => (
+                        <th key={column.key} className="report-date-col">
+                          <span>{formatDateShort(column.date)}</span>
+                          <small>{weekdayShort(column.date)}</small>
+                          <em>{slotShortName(column.pairNumber)}</em>
+                        </th>
+                      ))}
                   <th className="report-total-col" title="Всего отмечено">Всего</th>
                   <th className="report-total-col">Есть</th>
                   <th className="report-total-col">Нет</th>
@@ -394,79 +563,164 @@ export function ReportsScreen({ onMark, onGroups }: ReportsScreenProps) {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
-                  <tr key={row.student.id} className={row.student.archived ? 'is-archived' : ''}>
-                    <th className="report-name-col" scope="row">
-                      <span className="report-row-number">
-                        {row.student.archived ? (
-                          <Icon name="archive" size={14} />
-                        ) : (
-                          row.number
-                        )}
-                      </span>
-                      <button
-                        type="button"
-                        className="report-student-button"
-                        onClick={() => setDetailStudentId(row.student.id)}
-                        title={`Открыть все отметки: ${row.student.fullName}`}
-                        aria-label={`Открыть посещаемость: ${row.student.fullName}`}
+                {rows.map((row, index) => {
+                  const isExpanded = expandedStudentId === row.student.id;
+                  const detailId = `report-student-detail-${row.student.id}`;
+                  return (
+                    <Fragment key={row.student.id}>
+                      <tr
+                        className={`report-row${index % 2 === 1 ? ' is-striped' : ''}${row.student.archived ? ' is-archived' : ''}`}
                       >
-                        <span>{shortName(row.student.fullName)}</span>
-                        <Icon name="chevron-right" size={14} />
-                      </button>
-                      {row.student.archived && <small>архив</small>}
-                    </th>
-                    {columns.map((column) => {
-                      const record = recordLookup.get(
-                        `${row.student.id}|${column.date}|${column.pairNumber}`,
-                      );
-                      return (
-                        <td key={column.key}>
-                          {record ? (
-                            <button
-                              type="button"
-                              className={`report-cell cell-${record.status}${record.comment || record.status === 'late' ? ' has-note' : ''}`}
-                              onClick={() => setEditing({ student: row.student, record })}
-                              title={`${STATUS_META[record.status].label}${record.comment ? `: ${record.comment}` : ''}`}
-                              aria-label={`${row.student.fullName}, ${formatDate(column.date)}, ${slotName(column.pairNumber)}: ${STATUS_META[record.status].label}`}
-                            >
-                              {STATUS_META[record.status].symbol}
-                            </button>
-                          ) : (
-                            <span className="report-cell cell-none">—</span>
+                        <th className="report-name-col" scope="row">
+                          <span className="report-row-number">
+                            {row.student.archived ? (
+                              <Icon name="archive" size={14} />
+                            ) : (
+                              row.number
+                            )}
+                          </span>
+                          <button
+                            type="button"
+                            className="report-student-button"
+                            onClick={() =>
+                              setExpandedStudentId(isExpanded ? null : row.student.id)
+                            }
+                            aria-expanded={isExpanded}
+                            aria-controls={isExpanded ? detailId : undefined}
+                            title={`${isExpanded ? 'Свернуть' : 'Развернуть'} пропуски: ${row.student.fullName}`}
+                            aria-label={`${isExpanded ? 'Свернуть' : 'Развернуть'} посещаемость: ${row.student.fullName}`}
+                          >
+                            <span>{shortName(row.student.fullName)}</span>
+                            <Icon name="chevron-right" size={14} />
+                          </button>
+                          {row.student.archived && <small>архив</small>}
+                          {compactView && (
+                            <span className="report-compact-summary">
+                              {row.total} отм. ·{' '}
+                              {row.counts.absent + row.counts.sick + row.counts.excused}{' '}
+                              проп.
+                            </span>
                           )}
-                        </td>
-                      );
-                    })}
-                    <td className="report-total-col">{row.total}</td>
-                    <td className="report-total-col">{row.counts.present}</td>
-                    <td className="report-total-col">{row.counts.absent}</td>
-                    <td className="report-total-col">{row.counts.sick}</td>
-                    <td className="report-total-col">{row.counts.excused}</td>
-                    <td className="report-total-col">{row.counts.late}</td>
-                    <td className="report-total-col report-percent">{row.percent}</td>
-                  </tr>
-                ))}
+                        </th>
+                        {compactView
+                          ? days.map((day) => {
+                              const parts = buildCompactParts(
+                                day,
+                                recordLookup,
+                                row.student.id,
+                              );
+                              const label = compactDayLabel(day, parts);
+                              return (
+                                <td key={day.date} className="report-compact-cell">
+                                  <span
+                                    className="report-compact-sequence"
+                                    title={label}
+                                    aria-label={label}
+                                    role="img"
+                                  >
+                                    {parts.map((part, partIndex) => (
+                                      <span
+                                        key={`${day.date}-${partIndex}`}
+                                        className={`report-compact-char${part.status ? ` status-${part.status}` : ' is-empty'}`}
+                                      >
+                                        {part.symbol}
+                                      </span>
+                                    ))}
+                                  </span>
+                                </td>
+                              );
+                            })
+                          : columns.map((column) => {
+                              const record = recordLookup.get(
+                                `${row.student.id}|${column.date}|${column.pairNumber}`,
+                              );
+                              return (
+                                <td key={column.key}>
+                                  {record ? (
+                                    <button
+                                      type="button"
+                                      className={`report-cell cell-${record.status}${record.comment || record.status === 'late' ? ' has-note' : ''}`}
+                                      onClick={() => setEditing({ student: row.student, record })}
+                                      title={`${STATUS_META[record.status].label}${record.comment ? `: ${record.comment}` : ''}`}
+                                      aria-label={`${row.student.fullName}, ${formatDate(column.date)}, ${slotName(column.pairNumber)}: ${STATUS_META[record.status].label}`}
+                                    >
+                                      {STATUS_META[record.status].symbol}
+                                    </button>
+                                  ) : (
+                                    <span className="report-cell cell-none">—</span>
+                                  )}
+                                </td>
+                              );
+                            })}
+                        <td className="report-total-col">{row.total}</td>
+                        <td className="report-total-col">{row.counts.present}</td>
+                        <td className="report-total-col">{row.counts.absent}</td>
+                        <td className="report-total-col">{row.counts.sick}</td>
+                        <td className="report-total-col">{row.counts.excused}</td>
+                        <td className="report-total-col">{row.counts.late}</td>
+                        <td className="report-total-col report-percent">{row.percent}</td>
+                      </tr>
+                      {isExpanded && (
+                        <tr className="report-detail-row">
+                          <td colSpan={(compactView ? days.length : columns.length) + 8}>
+                            <div className="report-detail-sticky" id={detailId}>
+                              <ReportStudentDetail
+                                student={row.student}
+                                records={recordsByStudent.get(row.student.id) ?? []}
+                                month={month}
+                                onOpenAll={() => setDetailStudentId(row.student.id)}
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
 
-          <div className="report-legend">
-            {STATUS_ORDER.map((status) => (
-              <span key={status}>
-                <StatusChip status={status} />
-                <b>{STATUS_META[status].symbol}</b>
+          {compactView ? (
+            <div className="report-legend report-compact-legend">
+              <span>
+                <b>+</b> был
               </span>
-            ))}
-            <span className="muted">— нет отметки</span>
-            <span className="muted">
-              % = (Есть + Опоздал) / Всего отмечено × 100
-            </span>
-          </div>
+              <span>
+                <b>-</b> не был
+              </span>
+              <span>
+                <b>Б</b> болел
+              </span>
+              <span>
+                <b>У</b> уваж.
+              </span>
+              <span>
+                <b>О</b> опоздал
+              </span>
+              <span>
+                <b>—</b> нет отметки
+              </span>
+            </div>
+          ) : (
+            <div className="report-legend">
+              {STATUS_ORDER.map((status) => (
+                <span key={status}>
+                  <StatusChip status={status} />
+                  <b>{STATUS_META[status].symbol}</b>
+                </span>
+              ))}
+              <span className="muted">— нет отметки</span>
+              <span className="muted">
+                % = (Есть + Опоздал) / Всего отмечено × 100
+              </span>
+            </div>
+          )}
 
           <p className="field-hint no-print">
-            Нажмите на ФИО, чтобы открыть все отметки студента, на «Пропусков» — список
-            пропусков, на цветную клетку — изменить статус.
+            {compactView
+              ? 'Один символ — одна пара. Если все пары дня совпадают, остаётся один символ: + был, - не был, Б болел, У уважительная причина, О опоздал.'
+              : 'Нажмите на ФИО, чтобы развернуть итоги и пропуски студента; «Все отметки» в раскрытой строке — полный список; на «Пропусков» — пропуски всей группы.'}
           </p>
         </>
       )}
